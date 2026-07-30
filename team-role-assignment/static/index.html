@@ -78,6 +78,7 @@ const S = {
   skillPicker: null,             // {i, mode:'have'|'want'} — đang mở bảng chọn kỹ năng của ai
   skillQuery: '',
   graphMode: 'matrix',           // matrix | flow
+  saveError: '',                 // lỗi lưu phân công lên server, hiện banner đỏ
   showDetail: false,             // màn kết quả: mặc định gọn, bật mới hiện chi tiết
   view: 'dashboard', selectedDevId: null, currentUserId: null,
   devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
@@ -453,9 +454,15 @@ const App = {
   async persistAssignments(){
     if (!S.groupId) return;
     try {
-      await fetch('/api/groups/' + S.groupId, { method:'PATCH', headers:{'Content-Type':'application/json'},
+      const r = await fetch('/api/groups/' + S.groupId, { method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ assignments: S.assignments, taskStatus: S.taskStatus }) });
-    } catch(e) {}
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      S.saveError = '';
+    } catch(e) {
+      // Nuốt lỗi ở đây là mất phân công mà không ai biết -> phải báo lên đầu trang.
+      S.saveError = 'Chưa lưu được thay đổi lên server (' + e.message + '). Kiểm tra server còn chạy không rồi thao tác lại.';
+      render();
+    }
   },
   /* ---- bảng việc: todo -> doing -> done ---- */
   cycleTaskStatus(ev, taskId){
@@ -545,12 +552,15 @@ const App = {
   toggleChat(){ S.chatOpen = !S.chatOpen; render(); },
   clearChat(){ S.chatMessages = [{from:'ai', text:'Đã xoá hội thoại cũ. Hỏi mình về hồ sơ, bảng việc hay phương án phân công nhé.'}]; render(); },
   setChatInput(v){ S.chatInput = v; },
-  chatKey(e){ if (e.key === 'Enter') { S.chatInput = e.target.value; App.sendChat(); } },
+  chatKey(e){ if (e.key === 'Enter') { e.preventDefault(); S.chatInput = e.target.value; App.sendChat(); } },
 
   async sendChat(){
     const input = document.getElementById('chat-input');
     const text = ((input && input.value) || S.chatInput || '').trim();
     if (!text || S.chatBusy) return;
+    // Xoá ngay trên DOM: nếu để render() dọn, sự kiện của ô input cũ (lúc bị thay thế)
+    // còn kịp ghi lại chữ vừa gửi vào state -> câu hỏi hiện lại trong ô.
+    if (input) input.value = '';
     S.chatInput = ''; S.chatBusy = true;
     S.chatMessages.push({from:'user', text});
     render();
@@ -579,6 +589,7 @@ const App = {
     }
     S.chatBusy = false; render();
     const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
+    const again = document.getElementById('chat-input'); if (again) again.focus();   // hỏi tiếp không phải bấm lại vào ô
   },
 };
 
@@ -1442,7 +1453,7 @@ function renderChat(){
     </div>
     <div id="chat-scroll" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">${msgs}${busy}</div>
     <div style="padding:12px;border-top:1px solid oklch(0.9 0.006 85);display:flex;gap:8px;">
-      <input id="chat-input" type="text" placeholder="Hỏi AI về phân công..." value="${esc(S.chatInput)}" onchange="App.setChatInput(this.value)" onkeydown="App.chatKey(event)" style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);font-size:13px;outline:none;" />
+      <input id="chat-input" type="text" placeholder="Hỏi AI về phân công..." value="${esc(S.chatInput)}" oninput="App.setChatInput(this.value)" onkeydown="App.chatKey(event)" style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);font-size:13px;outline:none;" />
       <button style="border:none;background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border-radius:9px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.sendChat()">Gửi</button>
     </div></div>`;
 }
@@ -1980,7 +1991,11 @@ function render(){
   root.innerHTML = gateAnim(`<div style="min-height:100vh;display:flex;flex-direction:column;">
     ${renderNavbar()}
     ${renderHeader()}
-    <div style="flex:1;padding:24px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">${viewHtml}</div>
+    <div style="flex:1;padding:24px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">
+      ${S.saveError ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:12px 15px;font-size:12.5px;font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <span>⚠ ${esc(S.saveError)}</span>
+        <button class="pill-btn" style="background:#fff;color:#b91c1c;border:1px solid #fecaca;" onclick="App.set('saveError','')">Đóng</button></div>` : ''}
+      ${viewHtml}</div>
     ${renderExplain()}${renderChat()}
     ${renderTicketModal()}${renderTicketDetailModal()}${renderCoachModal()}
   </div>`);
