@@ -4,6 +4,19 @@ Phân tích GitHub activity thật của từng thành viên + tự đọc repo 
 
 > Hackathon Hướng C — Làn mở. Kế hoạch chi tiết: [PLAN.md](PLAN.md).
 
+## Tính năng chính
+- Phân quyền theo 2 vai trò: **Học viên** và **Lab Coach**.
+- **Học viên**: Tạo phân tích dựa trên GitHub activity, xem đề xuất phân công nhóm, gửi ticket hỗ trợ.
+- **Lab Coach**: Dashboard theo dõi tiến độ của tất cả các nhóm, phê duyệt phân công, trả lời ticket.
+- AI đọc hiểu tự động repo bài lab và tóm tắt yêu cầu bài lab.
+- AI phân tích dữ liệu GitHub để tính độ phù hợp (Fit Score) và đưa ra bằng chứng giải thích lý do giao task.
+
+## Tech dự kiến
+- Frontend: HTML/CSS/JS tĩnh (`static/index.html`)
+- Backend: FastAPI (Python), Uvicorn
+- AI/LLM: OpenAI API (phân tích & đọc hiểu), Pydantic (validate schemas)
+- Tích hợp: GitHub REST API (kéo lịch sử commit/hoạt động)
+
 ## Thông tin nhóm
 
 | STT | Họ và tên           | Mã học viên | Phân công công việc                                                                                   |
