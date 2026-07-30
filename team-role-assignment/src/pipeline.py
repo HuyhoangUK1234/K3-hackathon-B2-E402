@@ -33,6 +33,13 @@ QUY TẮC:
 - Chỉ kết luận từ dữ liệu được cung cấp (README, thư viện, cấu trúc source, backlog, roadmap). Không bịa công nghệ.
 - Thông tin mỏng -> confidence="low" + clarifying_questions (câu hỏi cho chủ dự án), KHÔNG đoán im lặng.
 - tasks: 4-8 đầu việc phủ vòng đời dự án, mô tả tiếng Việt, tên công nghệ tiếng Anh.
+- required_skills PHẢI là tên công nghệ/tool CỤ THỂ xuất hiện trong repo (VD: Python, Streamlit, OpenAI API,
+  Git, Markdown) — KHÔNG dùng danh mục chung chung kiểu "Frontend Development", "Testing", "Technical Writing".
+  Mỗi task 1-3 skill, chỉ skill thật sự cần.
+- Nếu được cung cấp danh sách "Kỹ năng nhóm đang có": khi một kỹ năng của nhóm dùng được cho task,
+  hãy dùng ĐÚNG tên đó (giữ nguyên chính tả) để hệ thống so khớp được.
+- summary: tóm tắt bài lab 2-4 câu tiếng Việt (đề bài yêu cầu gì, sản phẩm cuối là gì).
+  objectives: 3-6 mục tiêu chính. Cả hai CHỈ lấy từ tài liệu được cung cấp — thiếu thì ghi ngắn và hạ confidence.
 - estimate_days thực tế cho team học viên 3-5 người."""
 
 REPO_DECIDE_SYSTEM = """Bạn là AI agent chuẩn bị dữ liệu để phân tích một dự án phần mềm.
@@ -57,7 +64,17 @@ QUY TẮC:
 - fit_score: 90+ khớp hoàn toàn bằng chứng mạnh; 70-89 khớp phần lớn; 50-69 phải học thêm đáng kể;
   <50 không giao — đưa task vào unassigned_task_ids kèm warning.
 - Dùng đúng task_id và developer_id được cung cấp.
-- reason, warnings, workload_notes tiếng Việt; tên công nghệ tiếng Anh."""
+- skill_coverage: BẮT BUỘC 1 dòng cho MỖI kỹ năng khác nhau trong required_skills của mọi task.
+  So khớp NGỮ NGHĨA chứ không chỉ trùng tên: JavaScript/HTML/CSS che được việc dựng UI web;
+  Python che được Streamlit ở mức "gần có"; Jupyter Notebook gợi ý quen data/eval.
+  QUY TẮC CỨNG: thư viện/framework của một ngôn ngữ mà nhóm đã mạnh ngôn ngữ đó
+  (VD: requests, PyYAML, Streamlit, OpenAI API với người mạnh Python; React với người mạnh JavaScript)
+  thì status ÍT NHẤT là "gần có" — covered_by ghi người mạnh ngôn ngữ nền. "thiếu" chỉ dành cho
+  kỹ năng không ai có nền tảng liên quan (VD: Kubernetes khi cả nhóm chỉ làm web frontend).
+  - status "có": có người sở hữu đúng skill hoặc tương đương mạnh -> covered_by ghi tên + evidence.
+  - status "gần có": có người có nền tảng liên quan, học nhanh được -> covered_by ghi tên + nền tảng, note gợi ý ai nên học.
+  - status "thiếu": cả nhóm không có nền tảng liên quan -> note nói rõ rủi ro/cách xử lý.
+- reason, warnings, workload_notes, note tiếng Việt; tên công nghệ tiếng Anh."""
 
 
 def parse_name_from_repo(url: str) -> str:
@@ -83,6 +100,73 @@ def _time_label(days: float) -> str:
 DIFF_VI = {"low": "Thấp", "medium": "Trung bình", "high": "Cao"}
 
 
+def _overlap_score(task: dict, dev: dict) -> int:
+    names = {s.lower() for s in dev["skills"]}
+    overlap = sum(1 for s in task["skills"] if s.lower() in names)
+    return min(95, 50 + overlap * 15 + int(dev.get("readiness", 5)))
+
+
+def _rebalance(devs: list[dict], tasks: list[dict], assignments: dict, fit_matrix: dict) -> list[str]:
+    """Ensure every dev with a non-empty profile gets >=1 task when tasks >= devs."""
+    notes: list[str] = []
+    if len(tasks) < len(devs):
+        return notes
+    task_by_id = {t["id"]: t for t in tasks}
+    counts = {d["id"]: 0 for d in devs}
+    for did in assignments.values():
+        if did in counts:
+            counts[did] += 1
+    for d in devs:
+        if counts[d["id"]] > 0 or not d["skills"]:
+            continue
+        donor_id = max(counts, key=counts.get)
+        if counts[donor_id] <= 1:
+            continue
+        donor_tasks = [tid for tid, did in assignments.items() if did == donor_id]
+        best_tid = max(donor_tasks, key=lambda tid: _overlap_score(task_by_id[tid], d))
+        donor_name = next(x["name"] for x in devs if x["id"] == donor_id)
+        assignments[best_tid] = d["id"]
+        counts[donor_id] -= 1
+        counts[d["id"]] += 1
+        score = _overlap_score(task_by_id[best_tid], d)
+        fit_matrix.setdefault(best_tid, {})[d["id"]] = {
+            "score": score,
+            "reason": (f"Điều chỉnh tự động để cân bằng workload: chuyển từ {donor_name} "
+                       f"(đang nhận nhiều việc nhất) sang {d['name']}. "
+                       f"Fit ước tính theo độ trùng skill + readiness {d.get('readiness', 5)}/10."),
+            "skillsToLearn": [s for s in task_by_id[best_tid]["skills"]
+                              if s.lower() not in {k.lower() for k in d["skills"]}],
+        }
+        notes.append(f"Đã chuyển '{task_by_id[best_tid]['name']}' từ {donor_name} sang {d['name']} "
+                     f"để ai cũng có việc (guardrail cân bằng).")
+    return notes
+
+
+def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
+    """Flow 1 LLM step — same prompt the app uses; also called by eval."""
+    payload = {"github_data": gh.model_dump(), "self_reported": self_reported}
+    return call_json(
+        MODEL_FAST, UI_DEV_SYSTEM,
+        "Dữ liệu lập trình viên (GitHub thật + tự khai):\n"
+        + json.dumps(payload, ensure_ascii=False)
+        + "\n\nXây dựng hồ sơ UIDevProfile.",
+        UIDevProfile,
+    )
+
+
+def analyze_project_ui(proj_input: str) -> UIProjectAnalysis:
+    """Flow 2 LLM step — same prompt the app uses; also called by eval."""
+    return call_json(MODEL_FAST, UI_PROJECT_SYSTEM,
+                     proj_input + "\n\nPhân tích và trả về UIProjectAnalysis.", UIProjectAnalysis)
+
+
+def match_ui(match_payload: dict) -> UIMatchResult:
+    """Flow 3 LLM step — same prompt the app uses; also called by eval."""
+    return call_json(MODEL_SMART, UI_MATCH_SYSTEM,
+                     "Dữ liệu team và task:\n" + json.dumps(match_payload, ensure_ascii=False)
+                     + "\n\nPhân công và trả về UIMatchResult.", UIMatchResult, temperature=0.3)
+
+
 def analyze_all(setup: dict, members: list[dict]) -> dict:
     """Run the 3 flows and assemble the UI payload. Raises on LLM/config errors."""
     # ---- Flow 1: per-member GitHub fetch + LLM profile ----
@@ -93,24 +177,14 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         gh = fetch_developer(username) if username else GitHubData(username="", error="Không nhập GitHub username")
         if gh.error:
             gh_errors.append(f"{m.get('name') or username}: {gh.error}")
-        payload = {
-            "github_data": gh.model_dump(),
-            "self_reported": {
-                "name": m.get("name", ""),
-                "languages": m.get("languages", ""),
-                "frameworks": m.get("frameworks", ""),
-                "wants_to_learn": m.get("wantLearn", ""),
-                "readiness_1_to_10": m.get("readiness", 5),
-                "years_experience": m.get("experienceYears", 0),
-            },
-        }
-        profile = call_json(
-            MODEL_FAST, UI_DEV_SYSTEM,
-            "Dữ liệu lập trình viên (GitHub thật + tự khai):\n"
-            + json.dumps(payload, ensure_ascii=False)
-            + "\n\nXây dựng hồ sơ UIDevProfile.",
-            UIDevProfile,
-        )
+        profile = profile_developer(gh, {
+            "name": m.get("name", ""),
+            "languages": m.get("languages", ""),
+            "frameworks": m.get("frameworks", ""),
+            "wants_to_learn": m.get("wantLearn", ""),
+            "readiness_1_to_10": m.get("readiness", 5),
+            "years_experience": m.get("experienceYears", 0),
+        })
         name = m.get("name") or gh.display_name or username or f"Thành viên {i+1}"
         devs.append({
             "id": f"d{i+1}",
@@ -188,8 +262,10 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         + "\n=== Roadmap ===\n" + (setup.get("roadmap") or "(không có)")
         + ("\n\n=== Tài liệu bổ sung AI tự đọc từ repo ===" + extra_docs if extra_docs else "")
     )
-    proj = call_json(MODEL_FAST, UI_PROJECT_SYSTEM,
-                     proj_input + "\n\nPhân tích và trả về UIProjectAnalysis.", UIProjectAnalysis)
+    team_skills = sorted({sk for d in devs for sk in d["skills"]})
+    if team_skills:
+        proj_input += "\n\n=== Kỹ năng nhóm đang có (dùng đúng tên này khi khớp) ===\n" + ", ".join(team_skills)
+    proj = analyze_project_ui(proj_input)
 
     tasks = []
     labs = []
@@ -217,6 +293,8 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
     project = {
         "name": setup.get("projectName") or (parse_name_from_repo(repo_url) if repo_url else "") or "Dự án chưa đặt tên",
         "description": readme[:180] or "—",
+        "summary": proj.summary,
+        "objectives": proj.objectives,
         "sourcesRead": sources_read,
         "type": proj.project_type, "scale": proj.scale,
         "architecture": setup.get("architecture") or "—",
@@ -237,9 +315,7 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         "tasks": [{"id": t["id"], "name": t["name"], "required_skills": t["skills"],
                    "difficulty": t["difficulty"], "estimate_days": t["estimateDays"]} for t in tasks],
     }
-    mr = call_json(MODEL_SMART, UI_MATCH_SYSTEM,
-                   "Dữ liệu team và task:\n" + json.dumps(match_payload, ensure_ascii=False)
-                   + "\n\nPhân công và trả về UIMatchResult.", UIMatchResult, temperature=0.3)
+    mr = match_ui(match_payload)
 
     valid_dev = {d["id"] for d in devs}
     valid_task = {t["id"] for t in tasks}
@@ -252,12 +328,19 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
             }
             assignments[a.task_id] = a.developer_id
 
+    # Deterministic guardrail — the LLM sometimes ignores the balance constraint:
+    # if there are at least as many tasks as devs, every dev (with a non-empty
+    # profile) must end up with >=1 task. Move the best-overlapping task from
+    # the most loaded dev.
+    rebalance_notes = _rebalance(devs, tasks, assignments, fit_matrix)
+
     return {
         "devs": devs, "project": project, "tasks": tasks, "labs": labs,
         "fitMatrix": fit_matrix, "assignments": assignments,
-        "warnings": mr.warnings + gh_errors,
+        "warnings": mr.warnings + gh_errors + rebalance_notes,
         "workloadNotes": mr.workload_notes,
         "unassignedTaskIds": [t for t in mr.unassigned_task_ids if t in valid_task],
+        "skillCoverage": [c.model_dump() for c in mr.skill_coverage],
     }
 
 

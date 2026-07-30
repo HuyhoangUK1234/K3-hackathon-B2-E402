@@ -1,0 +1,255 @@
+{
+ "source": "Tái dựng từ lần chạy thật 30/07/2026 với Team B2 (repo Day04-E402-TeamB2) — teamb2_resp5.json + clone repo",
+ "devs": [
+  {
+   "id": "d1",
+   "name": "Bằng",
+   "roleSuited": "Frontend Developer",
+   "experienceYears": 1,
+   "readiness": 8,
+   "wantLearn": "",
+   "skills": {
+    "JavaScript": 85,
+    "HTML": 80,
+    "TypeScript": 70,
+    "Python": 65
+   },
+   "skillEvidence": {
+    "JavaScript": "GitHub language stats: JavaScript 324394",
+    "HTML": "GitHub language stats: HTML 100834",
+    "TypeScript": "GitHub language stats: TypeScript 39403",
+    "Python": "self-reported"
+   },
+   "githubStats": {
+    "commits": 36,
+    "prs": 8,
+    "issues": 2
+   },
+   "strengths": [
+    "Có kinh nghiệm thực tế với JavaScript và HTML.",
+    "Tham gia nhiều dự án trên GitHub.",
+    "Có khả năng tự học và cải thiện kỹ năng."
+   ]
+  },
+  {
+   "id": "d2",
+   "name": "Tâm",
+   "roleSuited": "Data Engineer",
+   "experienceYears": 1,
+   "readiness": 8,
+   "wantLearn": "",
+   "skills": {
+    "Python": 80,
+    "Jupyter Notebook": 80
+   },
+   "skillEvidence": {
+    "Python": "Thống kê ngôn ngữ GitHub: Python 73972",
+    "Jupyter Notebook": "Thống kê ngôn ngữ GitHub: Jupyter Notebook 1064451"
+   },
+   "githubStats": {
+    "commits": 13,
+    "prs": 0,
+    "issues": 0
+   },
+   "strengths": [
+    "Có kinh nghiệm trong việc phát triển mô hình tối ưu hóa sử dụng fuzzy logic.",
+    "Thực hiện các dự án phân tích dữ liệu tài chính và tối ưu hóa danh mục đầu tư."
+   ]
+  },
+  {
+   "id": "d3",
+   "name": "Tiến",
+   "roleSuited": "Frontend Developer",
+   "experienceYears": 1,
+   "readiness": 8,
+   "wantLearn": "",
+   "skills": {
+    "JavaScript": 70,
+    "Jupyter Notebook": 80,
+    "CSS": 65,
+    "HTML": 65
+   },
+   "skillEvidence": {
+    "JavaScript": "self-reported",
+    "Jupyter Notebook": "repo: RL-Lab04, language stat: 752567",
+    "CSS": "self-reported",
+    "HTML": "self-reported"
+   },
+   "githubStats": {
+    "commits": 34,
+    "prs": 2,
+    "issues": 0
+   },
+   "strengths": [
+    "Có kinh nghiệm làm việc với JavaScript và Jupyter Notebook.",
+    "Thích ứng nhanh với công nghệ mới.",
+    "Có khả năng làm việc nhóm tốt."
+   ]
+  },
+  {
+   "id": "d4",
+   "name": "Hoàng Việt",
+   "roleSuited": "Backend Developer",
+   "experienceYears": 1,
+   "readiness": 8,
+   "wantLearn": "",
+   "skills": {
+    "Python": 80,
+    "HTML": 65
+   },
+   "skillEvidence": {
+    "Python": "GitHub language stats: Python 404935",
+    "HTML": "GitHub language stats: HTML 90593"
+   },
+   "githubStats": {
+    "commits": 1,
+    "prs": 0,
+    "issues": 0
+   },
+   "strengths": [
+    "Có kinh nghiệm lập trình Python cơ bản.",
+    "Tham gia vào các dự án nhóm và hackathon."
+   ]
+  }
+ ],
+ "tasks": [
+  {
+   "id": "t1",
+   "name": "Thiết lập môi trường phát triển",
+   "required_skills": [
+    "Python",
+    "requests"
+   ],
+   "difficulty": "Trung bình",
+   "estimate_days": 2.0
+  },
+  {
+   "id": "t2",
+   "name": "Phát triển công cụ 'calc'",
+   "required_skills": [
+    "Python"
+   ],
+   "difficulty": "Trung bình",
+   "estimate_days": 3.0
+  },
+  {
+   "id": "t3",
+   "name": "Tối ưu hóa prompt và tool declaration",
+   "required_skills": [
+    "Python",
+    "OpenAI API"
+   ],
+   "difficulty": "Cao",
+   "estimate_days": 4.0
+  },
+  {
+   "id": "t4",
+   "name": "Phát triển giao diện người dùng với Streamlit",
+   "required_skills": [
+    "Python",
+    "Streamlit"
+   ],
+   "difficulty": "Trung bình",
+   "estimate_days": 3.0
+  },
+  {
+   "id": "t5",
+   "name": "Viết báo cáo và tài liệu",
+   "required_skills": [
+    "Markdown"
+   ],
+   "difficulty": "Thấp",
+   "estimate_days": 2.0
+  },
+  {
+   "id": "t6",
+   "name": "Triển khai ứng dụng để kiểm tra",
+   "required_skills": [
+    "Python"
+   ],
+   "difficulty": "Trung bình",
+   "estimate_days": 2.0
+  }
+ ],
+ "tree": [
+  ".gitignore",
+  "README.md",
+  "TOOL-SETUP.md",
+  "starter_v0/.env.example",
+  "starter_v0/.gitignore",
+  "starter_v0/agent.py",
+  "starter_v0/app.py",
+  "starter_v0/chat.py",
+  "starter_v0/env_loader.py",
+  "starter_v0/requirements.txt",
+  "starter_v0/run_eval.py",
+  "starter_v0/versioning.py",
+  "starter_v0/artifacts/REPORT.md",
+  "starter_v0/artifacts/system_prompt.md",
+  "starter_v0/artifacts/system_prompt.v0.md",
+  "starter_v0/artifacts/tools.yaml",
+  "starter_v0/artifacts/version_log.csv",
+  "starter_v0/company_policy/ai-research-policy.md",
+  "starter_v0/company_policy/data-privacy-policy.md",
+  "starter_v0/company_policy/external-publishing-policy.md",
+  "starter_v0/company_policy/README.md",
+  "starter_v0/company_policy/source-citation-policy.md",
+  "starter_v0/company_policy/tool-usage-policy.md",
+  "starter_v0/data/eval_base.json",
+  "starter_v0/data/eval_group.json",
+  "starter_v0/data/eval_research_extension.json",
+  "starter_v0/providers/anthropic_provider.py",
+  "starter_v0/providers/base.py",
+  "starter_v0/providers/gemini_provider.py",
+  "starter_v0/providers/openai_provider.py",
+  "starter_v0/providers/openrouter_provider.py",
+  "starter_v0/providers/__init__.py",
+  "starter_v0/runs/v0_B_group_openai_20260729T103130225681.json",
+  "starter_v0/runs/v0_B_group_openai_20260729T104115918063.json",
+  "starter_v0/runs/v1_B_group_openai_20260729T104421196740.json",
+  "starter_v0/runs/v2_B_group_openai_20260729T104838018584.json",
+  "starter_v0/samples/eval_group.schema.example.json",
+  "starter_v0/samples/README.md",
+  "starter_v0/samples/run-analysis.csv",
+  "starter_v0/samples/version_log.example.csv",
+  "starter_v0/scripts/parse_runs.py",
+  "starter_v0/scripts/preflight_provider.py",
+  "starter_v0/tools/README.md",
+  "starter_v0/tools/_shared.py",
+  "starter_v0/tools/__init__.py",
+  "starter_v0/transcripts/v2_openai_ui_20260729T105241981398.transcript.json",
+  "starter_v0/transcripts/v2_openai_ui_20260729T105312978864.transcript.json",
+  "starter_v0/transcripts/v2_openai_ui_20260729T105502615508.transcript.json",
+  "starter_v0/transcripts/v3_openai_ui_20260729T113154305579.transcript.json",
+  "starter_v0/transcripts/v3_openai_ui_20260729T113305857499.transcript.json",
+  "starter_v0/transcripts/v3_openai_ui_20260729T114539934540.transcript.json",
+  "starter_v0/transcripts/v3_openai_ui_20260729T115441816152.transcript.json",
+  "starter_v0/tools/calc/TOOL.md",
+  "starter_v0/tools/calc/tool.py",
+  "starter_v0/tools/clarify/TOOL.md",
+  "starter_v0/tools/clarify/tool.py",
+  "starter_v0/tools/fetch/TOOL.md",
+  "starter_v0/tools/fetch/tool.py",
+  "starter_v0/tools/format/TOOL.md",
+  "starter_v0/tools/format/tool.py",
+  "starter_v0/tools/lookup/TOOL.md",
+  "starter_v0/tools/lookup/tool.py",
+  "starter_v0/tools/papers/TOOL.md",
+  "starter_v0/tools/papers/tool.py",
+  "starter_v0/tools/paper_text/TOOL.md",
+  "starter_v0/tools/paper_text/tool.py",
+  "starter_v0/tools/policy/TOOL.md",
+  "starter_v0/tools/policy/tool.py",
+  "starter_v0/tools/quadratic/TOOL.md",
+  "starter_v0/tools/quadratic/tool.py",
+  "starter_v0/tools/send/TOOL.md",
+  "starter_v0/tools/send/tool.py",
+  "starter_v0/tools/social_search/TOOL.md",
+  "starter_v0/tools/social_search/tool.py",
+  "starter_v0/tools/timeline/TOOL.md",
+  "starter_v0/tools/timeline/tool.py",
+  "starter_v0/samples/transcripts/example_openrouter_20260101T030000000000.transcript.json"
+ ],
+ "readme_day04": "# Day 04 Lab v2 — Research Agent Tool Eval\n\n## Brief\n\nTrong lab này, nhóm build một research agent nhỏ nhưng chạy thật. Agent nhận request của user, chọn tool, truyền arguments, chạy tool thật, lưu full JSON log, rồi dùng log đó để tối ưu prompt/tool declaration qua nhiều version.\n\nĐiều cần học không phải là \"chatbot trả lời hay\". Điều cần học là vòng lặp evidence-driven:\n\n1. Chạy baseline bằng API thật.\n2. Đọc run JSON để biết sai tool, sai args, thiếu hỏi lại, hoặc gọi tool thừa.\n3. Sửa `artifacts/system_prompt.md` hoặc `artifacts/tools.yaml`.\n4. Chạy lại và ghi versioning.\n5. Tự viết thêm eval case để đo những lỗi nhóm quan tâm.\n6. Viết report dựa trên log thật, không dựa vào cảm giác.\n\n## Scope\n\nNhiệm vụ bắt buộc:\n\n- Setup chạy được bằng provider thật.\n- Agent có ít nhất 5 tool trong `artifacts/tools.yaml`.\n- Chạy base eval.\n- Tối ưu ít nhất 3 vòng sau baseline: `v1`, `v2`, `v3`.\n- Ghi `artifacts/version_log.csv`.\n- Viết thêm ít nhất 1 tool mới (kèm `TOOL.md`, đăng ký trong `tools/__init__.py` và `tools.yaml`).\n- Tự viết đúng 10 eval case vào `data/eval_group.json`: 5 single-turn + 5 multi-turn.\n- Nộp run JSON, transcript JSON, report.\n- Có UI chạy được. Khuyến nghị Streamlit để làm nhanh, nhưng nhóm có thể dùng bất kỳ framework nào và tự chọn nền tảng deploy phù hợp.\n- Hoàn thành `artifacts/REPORT.md`: Phần A xong trước 11:30 để làm tài liệu phụ trợ khi demo; Phần B hoàn thiện sau để nộp bài.\n\nUI là deliverable core, không phải bonus. Starter không cung cấp `app.py`; nhóm tự tạo UI bằng framework đã chọn.\n\nOptional/advanced tools có sẵn (không tính là tool mới của team; giữ declaration vẫn có thể đổi routing):\n\n- `send`: gửi text lên Telegram; live-send là optional.\n- `policy`, `papers`, `paper_text`: tải/trích PDF; đều optional.\n\nĐiểm bonus dành cho team hoàn thành UI bắt buộc **và** tự viết thêm hơn 3 tool mới. UI riêng lẻ hoặc các optional tool có sẵn không được tính là bonus.\n\n## Bằng chứng tối thiểu trên UI\n\nUI tốt không chỉ cần \"có chat\". Mỗi demo nên nhìn được:\n\n- request và response cuối cùng;\n- trace của từng tool: tên tool, args, round/status, result/error;\n- transcript/run/artifact_version để biết đang xem version nào;\n- cùng một scenario demo được chạy qua nhiều prompt/tool version để thấy cải thiện rõ ràng.\n\nNếu chọn Streamlit, cài và ghi `streamlit>=1.30.0` vào `requirements.txt`. Tạo `app.py` tái sử dụng `run_model_tool_loop` trong `chat.py`, hiển thị `rounds/tool_events`, và lưu transcript thay vì viết một agent loop khác. Chạy `streamlit run app.py`; PASS khi mở được `http://localhost:8501`. Framework khác dùng contract tương đương và entrypoint của nhóm.\n\n## Deploy để team khác test\n\nUI chạy local chỉ đủ cho máy của team build; nếu team khác test từ máy khác thì phải có URL truy cập được. Framework hay nền tảng deploy nào cũng được, miễn là người ngoài máy trình chiếu mở được.\n\nCách nhanh nhất cho link tạm là Cloudflare Tunnel:\n\n```bash\ncloudflared tunnel --url http://localhost:8501\n```\n\nLấy URL `trycloudflare.com` được sinh ra, paste vào `REPORT.md` phần A, rồi test lại bằng browser hoặc device khác trước showdown. Tunnel chỉ là giải pháp tạm thời; đừng để lộ secrets hoặc dữ liệu nhạy cảm trong UI public. Chi tiết cài đặt và lưu ý bảo mật nằm ở `TOOL-SETUP.md`.\n\n## Thiết kế tool cũng là một phần của prompt engineering\n\nKhông chỉ prompt quyết định kết quả. Tên tool và mô tả tool cũng là một phần của interface với model.\n\nƯu tiên:\n\n- tên tool phản ánh đúng intent;\n- mô tả nói rõ khi nào dùng / khi nào không dùng;\n- mô tả nêu convention cho arguments và default quan trọng;\n- action tool phải nêu rõ confirmation boundary.\n\nNếu đổi tên tool, phải sync đồng bộ các file sau:\n\n1. `artifacts/system_prompt.md`\n2. `artifacts/tools.yaml`\n3. `tools/<tool_name>/TOOL.md`\n4. `tools/__init__.py`\n5. `data/eval_base.json`\n6. `data/eval_research_extension.json`\n7. `data/eval_group.json` nếu case nhóm có nhắc đến tool đó\n8. `artifacts/REPORT.md` và demo/poster text\n\nTrong fixed eval, chỉ đổi field tên tool để đồng bộ rename; không sửa query, expected args hoặc expected behavior. Không sync đủ thì eval dễ báo `not declared in tools.yaml`, hoặc model và grader sẽ nói hai thứ khác nhau.\n\n## Các file quan trọng\n\n| Path | Mục đích |\n|---|---|\n| `artifacts/system_prompt.md` | instruction cho agent |\n| `artifacts/tools.yaml` | tên, mô tả và schema của tool |\n| `artifacts/version_log.csv` | giả thuyết và metric theo version |\n| `artifacts/REPORT.md` | tài liệu demo và bằng chứng nộp bài |\n| `data/eval_base.json` | base eval cố định |\n| `data/eval_group.json` | 10 case do nhóm tự viết |\n| `tools/<tool_name>/` | `TOOL.md` + implementation |\n| `scripts/preflight_provider.py` | kiểm tra provider |\n\n## Tool tracks\n\nPhần dưới đây chỉ tóm tắt mỗi tool *làm gì*. Việc xác định *khi nào dùng* tool nào là phần nhóm tự định nghĩa trong prompt và tool declaration. Giữ một declaration optional trong `tools.yaml` vẫn có thể ảnh hưởng routing, dù nó không đổi yêu cầu must-have.\n\nCore tools:\n\n- `clarify`: hỏi lại người dùng khi thiếu thông tin hoặc cần xác nhận yes/no trước hành động nhạy cảm.\n- `timeline`: lấy bài đăng gần đây của một tài khoản.\n- `social_search`: tìm bài đăng theo từ khóa.\n- `lookup`: tìm trên web.\n- `fetch`: đọc nội dung một URL.\n- `format`: trình bày các item đã có thành markdown digest.\n\nOptional/advanced tools có sẵn:\n\n- `send`: gửi text lên Telegram channel.\n- `policy`: tìm trong company policy markdown nội bộ.\n- `papers`: tìm paper trên arXiv.\n- `paper_text`: tải PDF arXiv và trích text cục bộ.\n\n## Setup\n\nXem chi tiết key, smoke test, và lưu ý Windows trong [TOOL-SETUP.md](TOOL-SETUP.md).\n\nTóm tắt nhanh:\n\n```bash\ncd starter_v0\npython3 -m venv .venv\nsource .venv/bin/activate\npython -m pip install -r requirements.txt\ntest -f .env || cp .env.example .env\n```\n\nMở `.env`, điền ít nhất key của model provider rồi lưu file. Sau đó mới chạy:\n\n```bash\npython scripts/preflight_provider.py --provider openrouter\n```\n\nKhông ghi đè `.env` đã có. Nếu dùng provider khác, thay `openrouter` trong mọi co",
+ "requirements_day04": "# Live model provider SDKs (install the one you use):\nopenai>=1.0.0\nanthropic>=0.34.0\ngoogle-genai>=0.8.0\n# Research tools:\nrequests>=2.31.0\nPyYAML>=6.0\n# Optional arXiv PDF extraction (`paper_text`):\npypdf>=4.0.0\n"
+}
