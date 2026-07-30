@@ -1,6 +1,6 @@
 # AI SPEC — Phân công vai trò team từ GitHub activity · Nhóm [B2] · Zone [E402]
  Tính năng mới
-
+**Bài toán:** Việc phân công công việc trong các dự án phần mềm hiện nay chủ yếu dựa trên kinh nghiệm của Team Leader, dễ dẫn đến giao việc chưa phù hợp với năng lực và ảnh hưởng đến tiến độ dự án. Đề tài đề xuất hệ thống AI phân tích dữ liệu GitHub và yêu cầu dự án để đánh giá mức độ phù hợp của từng thành viên và tự động đề xuất phương án phân công tối ưu.
 ## §1. User & Job
 - Job executor + workflow: Trưởng nhóm dự án học viên (team 3-5 người làm lab mỗi ngày) — nhận đề → hiểu yêu cầu → chia việc → theo dõi tiến độ.
 - Core JTBD: "Khi team mới nhận dự án, tôi muốn biết ai nên làm phần nào để không mất mấy ngày đầu tranh luận và không giao nhầm việc cho người không làm nổi."
