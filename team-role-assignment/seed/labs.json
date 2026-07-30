@@ -1,5 +1,16 @@
 [
 
-    {"lab1":"description here frome README lab1 or LLM describe if no README"},
-    {"lab2":"description here frome README lab2 or LLM describe if no README"}
+    {"name":"lab3",
+     "description":["https://github.com/VinUni-AI20k/Day-3-Lab-Chatbot-vs-react-agent-E402/blob/main/README.md","https://github.com/VinUni-AI20k/Day-3-Lab-Chatbot-vs-react-agent-E402/blob/main/docs/PHAN_CONG_CONG_VIEC.md","https://github.com/VinUni-AI20k/Day-3-Lab-Chatbot-vs-react-agent-E402/blob/main/docs/CODELAB.md"],
+    "URL":"https://github.com/VinUni-AI20k/Day-3-Lab-Chatbot-vs-react-agent-E402"
+},
+    {"name":"lab1",
+     "description":["https://github.com/VinUni-AI20k/K3-Day01-LLM-API-Exploration/blob/main/README.md","https://github.com/VinUni-AI20k/K3-Day01-LLM-API-Exploration/blob/main/LAB_GUIDE.md","https://github.com/VinUni-AI20k/K3-Day01-LLM-API-Exploration/blob/main/exercises.md"],
+     "URL":"https://github.com/VinUni-AI20k/K3-Day01-LLM-API-Exploration"
+    },
+    {
+        "name":"lab2",
+        "description":["https://github.com/VinUni-AI20k/K3-Day02-AI-Product-Labs/blob/main/README.md","https://github.com/VinUni-AI20k/K3-Day02-AI-Product-Labs/blob/main/01-worksheet.md","https://github.com/VinUni-AI20k/K3-Day02-AI-Product-Labs/blob/main/02-deliverable-example.md"],
+        "URL":"https://github.com/VinUni-AI20k/K3-Day02-AI-Product-Labs"
+    }
 ]

@@ -1,28 +1,5 @@
 [
-    {
-        "id": 1,
-        "name": "hoang viet",
-        "MSSV": "2A2026",
-        "github": "link github",
-        "labs": [
-            {
-                "name": "lab1",
-                "repo_url": "",
-                "report": [],
-                "group_report": [],
-                "blockers": ["what make me hard in this lab"],
-                "intentions": ["what i want to do in the next lab"]
-            },
-            {
-                "name": "lab2",
-                "repo_url": "",
-                "report": [],
-                "group_report": [],
-                "blockers": ["what make me hard in this lab"],
-                "intentions": ["what i want to do in the next lab"]
-            }
-        ]
-    },
+    
     {
         "id": 2,
         "name": "Nguyen Van Tien",
@@ -70,10 +47,7 @@
                 "repo_url": "https://github.com/duyhung-2k4/DAY01_2A202601135_NguyenLeDuyHung",
                 "report": [],
                 "group_report": [],
-                "blockers": [
-                    "Chưa hiểu API Key",
-                    "Chưa làm quen được lab setup"
-                ],
+                "blockers": [],
                 "intentions": []
             },
             {
@@ -86,13 +60,49 @@
                 "group_report": [
                     "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/02-group-problem-statement/group-report.md"
                 ],
-                "blockers": [
-                    "Chưa tốt về khoản BA"
-                ],
+                "blockers": [],
                 "intentions": [
-                    "Muốn tìm hiểu sâu hơn về BA"
+                    "Muốn thử làm leader"
                 ]
             }
         ]
-    }
+    },
+    {
+    "id": 4,
+    "name": "Ta Thi Nga",
+    "MSSV": "2A202601125",
+    "github": "https://github.com/ngatt-17",
+    "labs": [
+      {
+        "name": "lab1",
+        "repo_url": "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga",
+        "report": [
+          "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga#readme"
+        ],
+        "group_report": [],
+        "blocker": [
+          "Không gặp khó khăn lớn; cần ôn lại một vài khái niệm Python cơ bản"
+        ],
+        "intension": [
+          "Hoàn thiện mã nguồn và viết báo cáo chi tiết hơn cho lab tiếp theo"
+        ]
+      },
+      {
+        "name": "lab2",
+        "repo_url": "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga",
+        "report": [
+          "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga#readme"
+        ],
+        "group_report": [
+          "https://github.com/ngatt-17/Day04_2A202601125_TaThiNga_TeamB2"
+        ],
+        "blocker": [
+          "Cần thêm thời gian tìm hiểu tài liệu liên quan đến nội dung lab"
+        ],
+        "intension": [
+          "Tìm hiểu thêm về prompt engineering và áp dụng trong lab tiếp theo"
+        ]
+      }
+    ]
+  }
 ]
