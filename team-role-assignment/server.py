@@ -69,6 +69,7 @@ class AnalyzeRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     state_summary: str = ""
+    history: list[dict] = []        # [{role: user|assistant, content: str}] — bộ nhớ hội thoại
 
 
 class TicketCreate(BaseModel):
@@ -89,6 +90,7 @@ class GroupUpdate(BaseModel):
     status: str | None = None       # Analyzed | Approved | Needs Revision
     coachFeedback: str | None = None
     assignments: dict | None = None  # student may re-drag tasks; persist
+    taskStatus: dict | None = None   # {taskId: todo|doing|done} — bảng việc kiểu Jira mini
 
 
 def _group_summary(g: dict) -> dict:
@@ -142,6 +144,13 @@ def health():
             "github_token": bool(os.getenv("GITHUB_TOKEN", "").strip())}
 
 
+@app.get("/api/skills")
+def list_skills():
+    """Danh mục kỹ năng chuẩn (seed/skills.json) — UI cho chọn tag thay vì gõ tay."""
+    from src.skills import as_options
+    return _graph_call(as_options)
+
+
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest):
     if not req.members:
@@ -182,6 +191,7 @@ def get_group(group_id: str):
             payload = dict(g["payload"])
             if g.get("assignments"):
                 payload["assignments"] = g["assignments"]
+            payload["taskStatus"] = g.get("taskStatus") or {}
             payload["groupId"] = g["id"]
             payload["createdAt"] = g.get("createdAt", "")
             payload["status"] = g.get("status", "Analyzed")
@@ -201,6 +211,8 @@ def update_group(group_id: str, req: GroupUpdate):
                 g["coachFeedback"] = req.coachFeedback
             if req.assignments is not None:
                 g["assignments"] = req.assignments
+            if req.taskStatus is not None:
+                g["taskStatus"] = req.taskStatus
             _save("groups.json", groups)
             return {"ok": True, "group": _group_summary(g)}
     return JSONResponse(status_code=404, content={"error": "Không tìm thấy nhóm."})
@@ -280,7 +292,7 @@ def update_ticket(ticket_id: str, req: TicketUpdate):
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     try:
-        return {"reply": chat_reply(req.message, req.state_summary)}
+        return {"reply": chat_reply(req.message, req.state_summary, req.history)}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

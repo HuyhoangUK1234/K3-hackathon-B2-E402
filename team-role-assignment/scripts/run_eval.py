@@ -19,6 +19,10 @@ from src.pipeline import (REPO_DECIDE_SYSTEM, _rebalance,     # noqa: E402
                           analyze_project_ui, chat_reply,
                           match_ui, profile_developer)
 from src.schemas import GitHubData, RepoReadPlan              # noqa: E402
+from src.skills import (canon, canon_list, catalog,           # noqa: E402
+                        menu_for_prompt)
+
+VALID_AXES = set(catalog())
 
 FX = json.loads((ROOT / "eval" / "fixtures_teamb2.json").read_text(encoding="utf-8"))
 GOLDEN = json.loads((ROOT / "eval" / "golden_set.json").read_text(encoding="utf-8"))
@@ -39,6 +43,7 @@ def record(cid: str, ok: bool, detail: str, fabricated: bool = False):
 
 
 def proj_input(readme: str, deps: str = "", extra: str = "") -> str:
+    """Dựng đúng chuỗi input production (kể cả danh mục kỹ năng chuẩn)."""
     return ("=== Tên dự án ===\n(chưa đặt tên)"
             "\n=== GitHub repo ===\n(không có)"
             "\n=== README / tài liệu yêu cầu ===\n" + (readme or "(trống)")
@@ -46,17 +51,18 @@ def proj_input(readme: str, deps: str = "", extra: str = "") -> str:
             + "\n=== Cấu trúc source ===\n(không có)"
             + "\n=== Kiến trúc ===\n(không rõ)"
             + "\n=== Backlog ===\n(không có)"
-            + "\n=== Roadmap ===\n(không có)" + extra)
-
-
-GENERIC_SKILLS = {"frontend development", "backend development", "testing",
-                  "technical writing", "ui/ux", "ux design", "documentation",
-                  "teamwork", "problem solving", "software development",
-                  "web development", "prompt engineering", "data analytics"}
+            + "\n=== Roadmap ===\n(không có)"
+            + "\n\n=== Danh mục kỹ năng chuẩn (required_skills chỉ được lấy id ở đây) ===\n"
+            + menu_for_prompt() + extra)
 
 
 def all_task_skills(proj):
     return [s for t in proj.tasks for s in t.required_skills]
+
+
+def axes_of(profile) -> set[str]:
+    """Tên skill LLM trả -> trục chuẩn; tên ngoài danh mục giữ nguyên (chữ thường)."""
+    return {canon(s.name) or s.name.strip().lower() for s in profile.skills}
 
 
 # ================= PROJECT FLOW =================
@@ -82,22 +88,22 @@ def run_p02():
 def run_p03():
     p = analyze_project_ui(proj_input(FX["readme_day04"], FX["requirements_day04"]))
     skills = all_task_skills(p)
+    outside = sorted({s for s in skills if s not in VALID_AXES})
     low = [s.lower() for s in skills] + [t.lower() for t in p.tech_stack]
-    generic = [s for s in skills if s.lower() in GENERIC_SKILLS]
     invented = [x for x in low if x in ("kubernetes", "tensorflow", "react", "spring boot")]
-    ok = not generic and not invented and any("python" in x for x in low)
-    record("P03", ok, f"generic={generic}, invented={invented}, skills={sorted(set(skills))}",
+    ok = not outside and not invented and any("python" in x for x in low)
+    record("P03", ok, f"ngoài danh mục chuẩn={outside}, bịa tech={invented}, skills={sorted(set(skills))}",
            fabricated=bool(invented))
 
 
 def run_p04():
-    team = ["Python", "JavaScript", "Streamlit", "requests", "Jupyter Notebook",
-            "Markdown", "HTML", "CSS"]
-    extra = "\n\n=== Kỹ năng nhóm đang có (dùng đúng tên này khi khớp) ===\n" + ", ".join(team)
+    team = ["python", "ui-frontend", "api-integration", "notebook-jupyter",
+            "documentation", "llm-app-dev"]
+    extra = "\n\n=== Trục kỹ năng nhóm đang có ===\n" + ", ".join(team)
     p = analyze_project_ui(proj_input(FX["readme_day04"], FX["requirements_day04"], extra))
     matched = sorted({s for s in all_task_skills(p) if s in team})
     ok = len(matched) >= 2
-    record("P04", ok, f"trùng chính tả với vocab nhóm: {matched}")
+    record("P04", ok, f"trùng đúng trục nhóm: {matched}")
 
 
 def run_p05():
@@ -117,8 +123,11 @@ def run_p06():
 # ================= DEVELOPER FLOW =================
 
 def _self(languages="", frameworks="", want="", readiness=8, years=1, name="Dev"):
-    return {"name": name, "languages": languages, "frameworks": frameworks,
-            "wants_to_learn": want, "readiness_1_to_10": readiness, "years_experience": years}
+    """Khối tự khai đúng dạng production gửi vào profile_developer()."""
+    return {"name": name, "declared_skill_axes": canon_list([languages, frameworks]) if (languages or frameworks) else [],
+            "wants_to_learn_axes": canon_list([want]) if want else [],
+            "other_tech_free_text": ", ".join(x for x in [languages, frameworks] if x),
+            "readiness_1_to_10": readiness, "years_experience": years}
 
 
 def run_d01():
@@ -142,9 +151,9 @@ def run_d02():
                                 "stars": 0, "topics": []}],
                     recent_commit_messages=["[todo-app] fix button"], commit_count=12)
     p = profile_developer(gh, _self())
-    names = {s.name.lower() for s in p.skills}
-    banned = names & {"rust", "go", "kubernetes", "docker", "aws"}
-    record("D02", not banned, f"skills={sorted(names)}, bịa={sorted(banned)}", fabricated=bool(banned))
+    ax = axes_of(p)
+    banned = ax & {"rust", "go", "devops-deploy", "database", "rag-retrieval"}
+    record("D02", not banned, f"trục={sorted(ax)}, bịa={sorted(banned)}", fabricated=bool(banned))
 
 
 def run_d03():
@@ -158,11 +167,12 @@ def run_d03():
                     recent_commit_messages=["[Day04-E402-TeamB2] add research agent tools",
                                             "[Day02] hoàn thành lab 2"], commit_count=25)
     p = profile_developer(gh, _self())
-    names = {s.name.lower() for s in p.skills}
-    allowed = {"python", "jupyter notebook", "jupyter", "git", "github"}
-    outside = sorted(names - allowed)
-    ok = "python" in names and not outside and all(s.evidence.strip() for s in p.skills)
-    record("D03", ok, f"skills={sorted(names)}, ngoài dữ liệu={outside}", fabricated=bool(outside))
+    ax = axes_of(p)
+    # commit message có "research agent tools" -> ai-agent-design vẫn là suy ra từ dữ liệu
+    allowed = {"python", "notebook-jupyter", "git-github", "ai-agent-design"}
+    outside = sorted(ax - allowed)
+    ok = "python" in ax and not outside and all(s.evidence.strip() for s in p.skills)
+    record("D03", ok, f"trục={sorted(ax)}, ngoài dữ liệu={outside}", fabricated=bool(outside))
 
 
 def run_d04():
@@ -190,19 +200,20 @@ def run_d06():
                                 "stars": 0, "topics": []}],
                     recent_commit_messages=["[web-ui] responsive layout"], commit_count=18)
     p = profile_developer(gh, _self())
-    names = {s.name.lower() for s in p.skills}
-    allowed = {"javascript", "html", "css", "git", "github"}
-    outside = sorted(names - allowed)
-    record("D06", not outside, f"skills={sorted(names)}, ngoài dữ liệu={outside}",
+    ax = axes_of(p)
+    allowed = {"ui-frontend", "git-github"}
+    outside = sorted(ax - allowed)
+    record("D06", not outside, f"trục={sorted(ax)}, ngoài dữ liệu={outside}",
            fabricated=bool(outside))
 
 
 # ================= MATCHING FLOW =================
 
 def _dev(i, name, skills: dict, evidence: dict, readiness=7, want=""):
+    """skills là dict {skill_id: level} — đúng dạng skillAxes production gửi cho matcher."""
     return {"id": f"d{i}", "name": name, "roleSuited": "Fullstack Developer",
             "experienceYears": 2, "readiness": readiness, "wantLearn": want,
-            "skills": skills, "skillEvidence": evidence,
+            "skillAxes": skills, "skillEvidence": evidence,
             "githubStats": {"commits": 30, "prs": 3, "issues": 2}, "strengths": list(skills)}
 
 
@@ -213,10 +224,10 @@ def _task(i, name, skills, diff="Trung bình", days=5.0):
 
 def run_m01():
     mr = match_ui({"developers": [
-        _dev(1, "an", {"Java": 90, "Spring Boot": 85}, {"Java": "[shop-api] 34 commits"}),
-        _dev(2, "binh", {"React": 88, "JavaScript": 82}, {"React": "[web-ui] 50 commits"})],
-        "tasks": [_task(1, "Backend API", ["Java", "Spring Boot"], "Cao", 10),
-                  _task(2, "Frontend", ["React"], "Trung bình", 8)]})
+        _dev(1, "an", {"backend-api": 90, "python": 85}, {"backend-api": "[shop-api] 34 commits FastAPI"}),
+        _dev(2, "binh", {"ui-frontend": 88}, {"ui-frontend": "[web-ui] 50 commits React"})],
+        "tasks": [_task(1, "Backend API", ["backend-api", "python"], "Cao", 10),
+                  _task(2, "Frontend", ["ui-frontend"], "Trung bình", 8)]})
     pairs = {a.task_id: a.developer_id for a in mr.assignments}
     ok = pairs.get("t1") == "d1" and pairs.get("t2") == "d2" and all(len(a.reason) > 10 for a in mr.assignments)
     record("M01", ok, f"pairs={pairs}")
@@ -224,9 +235,9 @@ def run_m01():
 
 def run_m02():
     mr = match_ui({"developers": [
-        _dev(1, "an", {"Java": 90}, {"Java": "[shop-api] 34 commits"}),
-        _dev(2, "binh", {"React": 88}, {"React": "[web-ui] 50 commits"})],
-        "tasks": [_task(1, "AI Model", ["Python", "PyTorch"], "Cao", 12)]})
+        _dev(1, "an", {"backend-api": 90}, {"backend-api": "[shop-api] 34 commits"}),
+        _dev(2, "binh", {"ui-frontend": 88}, {"ui-frontend": "[web-ui] 50 commits"})],
+        "tasks": [_task(1, "Huấn luyện mô hình + RAG", ["rag-retrieval", "data-analysis"], "Cao", 12)]})
     low_fit = all(a.fit_score < 50 for a in mr.assignments) if mr.assignments else True
     ok = ("t1" in mr.unassigned_task_ids or low_fit) and len(mr.warnings) >= 1
     record("M02", ok, f"unassigned={mr.unassigned_task_ids}, warnings={len(mr.warnings)}, "
@@ -234,13 +245,16 @@ def run_m02():
 
 
 def run_m03():
-    tasks = [_task(1, "Backend API", ["Java"], "Cao", 8), _task(2, "Frontend", ["React", "HTML"], "Trung bình", 6),
-             _task(3, "Landing page", ["HTML", "CSS"], "Thấp", 4), _task(4, "Script xử lý dữ liệu", ["Python"], "Trung bình", 5),
-             _task(5, "Tài liệu hướng dẫn", ["Markdown"], "Thấp", 3)]
+    tasks = [_task(1, "Backend API", ["backend-api"], "Cao", 8),
+             _task(2, "Giao diện chính", ["ui-frontend"], "Trung bình", 6),
+             _task(3, "Trang giới thiệu", ["ui-frontend"], "Thấp", 4),
+             _task(4, "Script xử lý dữ liệu", ["data-handling"], "Trung bình", 5),
+             _task(5, "Tài liệu hướng dẫn", ["documentation"], "Thấp", 3)]
     mr = match_ui({"developers": [
-        _dev(1, "fullstack", {"Java": 90, "React": 85, "Python": 80, "SQL": 75}, {"Java": "[erp] 120 commits"}),
-        _dev(2, "junior1", {"HTML": 55, "CSS": 50}, {"HTML": "[blog] 8 commits"}, readiness=9),
-        _dev(3, "junior2", {"Python": 45}, {"Python": "[bt-lop] 5 commits"}, readiness=9)],
+        _dev(1, "fullstack", {"backend-api": 90, "ui-frontend": 85, "python": 80, "database": 75},
+             {"backend-api": "[erp] 120 commits"}),
+        _dev(2, "junior1", {"ui-frontend": 55}, {"ui-frontend": "[blog] 8 commits"}, readiness=9),
+        _dev(3, "junior2", {"python": 45, "data-handling": 40}, {"python": "[bt-lop] 5 commits"}, readiness=9)],
         "tasks": tasks})
     days = {t["id"]: t["estimate_days"] for t in tasks}
     total = sum(days.values())
@@ -255,14 +269,26 @@ def run_m03():
 
 
 def run_m04():
-    mr = match_ui({"developers": FX["devs"], "tasks": FX["tasks"]})
-    dev_ids = {d["id"] for d in FX["devs"]}
+    # Snapshot thật Team B2, quy về trục chuẩn đúng như production làm trước khi gọi matcher.
+    def to_axes(skills: dict) -> dict:
+        out: dict[str, int] = {}
+        for name, lv in skills.items():        # gộp trùng theo mức CAO NHẤT như production
+            sid = canon(name) or name
+            out[sid] = max(out.get(sid, 0), lv)
+        return out
+
+    devs = [{**d, "skillAxes": to_axes(d["skills"])} for d in FX["devs"]]
+    for d in devs:
+        d.pop("skills", None)
+    tasks = [{**t, "required_skills": canon_list(t["required_skills"])} for t in FX["tasks"]]
+    mr = match_ui({"developers": devs, "tasks": tasks})
+    dev_ids = {d["id"] for d in devs}
     got = {}
     for a in mr.assignments:
         got[a.developer_id] = got.get(a.developer_id, 0) + 1
     everyone = all(got.get(d, 0) >= 1 for d in dev_ids)
-    required = {s.lower() for t in FX["tasks"] for s in t["required_skills"]}
-    covered = {c.skill.lower() for c in mr.skill_coverage}
+    required = {s for t in tasks for s in t["required_skills"]}
+    covered = {canon(c.skill) or c.skill for c in mr.skill_coverage}
     missing_rows = sorted(required - covered)
     ok = everyone and not missing_rows
     record("M04", ok, f"tasks/dev={got}, coverage thiếu dòng={missing_rows}")
@@ -270,11 +296,12 @@ def run_m04():
 
 def run_m05():
     mr = match_ui({"developers": [
-        _dev(1, "an", {"Python": 85}, {"Python": "[etl] 60 commits"}),
-        _dev(2, "binh", {"JavaScript": 80}, {"JavaScript": "[ui] 45 commits"}),
+        _dev(1, "an", {"python": 85}, {"python": "[etl] 60 commits"}),
+        _dev(2, "binh", {"ui-frontend": 80}, {"ui-frontend": "[ui] 45 commits"}),
         _dev(3, "trống", {}, {})],
-        "tasks": [_task(1, "API", ["Python"], "Cao", 8), _task(2, "UI", ["JavaScript"], "Trung bình", 6),
-                  _task(3, "Nhập liệu mẫu", ["Python"], "Thấp", 2), _task(4, "Viết README", ["Markdown"], "Thấp", 2)]})
+        "tasks": [_task(1, "API", ["python"], "Cao", 8), _task(2, "UI", ["ui-frontend"], "Trung bình", 6),
+                  _task(3, "Nhập liệu mẫu", ["data-handling"], "Thấp", 2),
+                  _task(4, "Viết README", ["documentation"], "Thấp", 2)]})
     empty_fits = [a.fit_score for a in mr.assignments if a.developer_id == "d3"]
     fake_high = [f for f in empty_fits if f > 65]
     ok = not fake_high and len(mr.warnings) >= 1
@@ -282,13 +309,16 @@ def run_m05():
 
 
 def run_m06():
+    # Lỗi Lab Coach báo 31/07: người dùng gõ "NextJS" -> canon phải đưa về ui-frontend
+    declared = canon_list(["NextJS", "Tailwind CSS"])
     mr = match_ui({"developers": [
-        _dev(1, "b", {"JavaScript": 85, "HTML": 80}, {"JavaScript": "[web] 70 commits JS"})],
-        "tasks": [_task(1, "UI component", ["React"], "Trung bình", 6),
-                  _task(2, "Landing", ["HTML"], "Thấp", 4)]})
-    react = [c for c in mr.skill_coverage if c.skill.lower() == "react"]
-    ok = bool(react) and react[0].status in ("có", "gần có")
-    record("M06", ok, f"react={[(c.status, c.covered_by) for c in react]}")
+        _dev(1, "b", {s: 85 for s in declared},
+             {declared[0]: "[web] 70 commits Next.js (tự khai: NextJS)"})],
+        "tasks": [_task(1, "Dựng giao diện", ["ui-frontend"], "Trung bình", 6),
+                  _task(2, "Trang giới thiệu", ["ui-frontend"], "Thấp", 4)]})
+    rows = [c for c in mr.skill_coverage if (canon(c.skill) or c.skill) == "ui-frontend"]
+    ok = declared == ["ui-frontend"] and bool(rows) and rows[0].status in ("có", "gần có")
+    record("M06", ok, f"canon(NextJS,Tailwind)={declared}, coverage={[(c.status, c.covered_by) for c in rows]}")
 
 
 # ================= CHAT =================
@@ -361,11 +391,37 @@ def run_g01():
 
 # ================= MAIN =================
 
+def run_n01():
+    """Lỗi thật: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau -> báo thiếu oan."""
+    variants = {
+        "ui-frontend": ["NextJS", "Next.js", "next js", "React", "HTML/CSS"],
+        "backend-api": ["FastAPI", "fastapi", "Spring Boot"],
+        "api-integration": ["OpenAI API", "REST API"],
+        "testing-eval": ["Kiểm thử & đo lường", "pytest"],
+        "notebook-jupyter": ["Jupyter", "Google Colab"],
+    }
+    wrong = {v: canon(v) for axis, names in variants.items() for v in names
+             if canon(v) != axis}
+    record("N01", not wrong, f"biến thể sai trục={wrong or 'không có'} "
+                             f"({sum(len(v) for v in variants.values())} biến thể kiểm)")
+
+
+def run_n02():
+    """Quy chuẩn không được nuốt kỹ năng lạ, cũng không được đẻ trục ngoài seed."""
+    unknown = ["Blockchain", "Unity", "Rust"]
+    forced = [u for u in unknown if canon(u) is not None]
+    kept = canon_list(["NextJS", "Blockchain", "Next.js"])
+    lost = [u for u in ["Blockchain"] if u not in kept]
+    outside = [s for s in kept if s not in VALID_AXES and s not in unknown]
+    ok = not forced and not lost and not outside and kept.count("ui-frontend") == 1
+    record("N02", ok, f"ép sai trục={forced}, mất kỹ năng={lost}, canon_list={kept}")
+
+
 RUNNERS = [run_p01, run_p02, run_p03, run_p04, run_p05, run_p06,
            run_d01, run_d02, run_d03, run_d04, run_d05, run_d06,
            run_m01, run_m02, run_m03, run_m04, run_m05, run_m06,
            run_c01, run_c02, run_c03, run_c04,
-           run_a01, run_g01]
+           run_a01, run_g01, run_n01, run_n02]
 
 
 def write_report():
@@ -409,6 +465,16 @@ def write_report():
         lines.append(f"| {r['id']} | {r['flow']} | {r['type']} | {'✓' if r['real'] else ''} "
                      f"| {'✅ PASS' if r['ok'] else '❌ FAIL'} | {r['desc'][:80]} | {detail} |")
     (ROOT / "eval" / "results.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if n == len(RUNNERS):        # chỉ ghi lịch sử khi chạy đủ bộ, không ghi khi chạy lẻ 1-2 case
+        hist = ROOT / "eval" / "run-history.md"
+        if not hist.exists():
+            hist.write_text("# Lịch sử các lượt chạy bộ câu thử\n\n"
+                            "| Thời điểm | Kết quả | Bịa skill | Chuẩn (>=75% & 0 bịa) | Ghi chú |\n"
+                            "|---|---|---:|---|---|\n", encoding="utf-8")
+        with hist.open("a", encoding="utf-8") as f:
+            f.write(f"| {datetime.now().strftime('%d/%m/%Y %H:%M')} | {n_pass}/{n} ({pct}%) "
+                    f"| {len(fabrications)} | {'ĐẠT' if goal_met else 'CHƯA ĐẠT'} "
+                    f"| fail: {', '.join(r['id'] for r in results if not r['ok']) or 'không'} |\n")
     print(f"\n== {n_pass}/{n} PASS ({pct}%) | bịa skill: {len(fabrications)} | "
           f"chuẩn >=75% & 0 bịa: {'ĐẠT' if goal_met else 'CHƯA ĐẠT'} ==")
     print("Report: eval/results.md")

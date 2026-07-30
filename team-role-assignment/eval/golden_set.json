@@ -1,15 +1,16 @@
 {
-  "_note": "Bộ câu thử CP3 — 24 case chạy qua đúng prompt production (src/pipeline.py). Mỗi case: input + expected kiểm được bằng máy (scripts/run_eval.py). Chuẩn đạt cam kết: >=75% case pass VÀ không case nào AI bịa skill không có bằng chứng.",
+  "_note": "Bộ câu thử CP3 — 26 case chạy qua đúng prompt production (src/pipeline.py). Mỗi case: input + expected kiểm được bằng máy (scripts/run_eval.py). Từ 31/07/2026 mọi kỹ năng dùng chung danh mục seed/skills.json, nên case kiểm cả việc quy tên về đúng trục chuẩn. Chuẩn đạt cam kết: >=75% case pass VÀ không case nào AI bịa skill không có bằng chứng.",
   "_types": {
-    "type1_khong_co_trong_du_lieu": ["P03", "P05", "D01", "D02", "D03", "C02"],
+    "type1_khong_co_trong_du_lieu": ["P03", "P04", "P05", "D01", "D02", "D03", "C02", "N02"],
     "type2_mo_ho_thieu_ngu_canh": ["P02", "P06", "D04", "D05"],
     "type3_doi_thu_khong_duoc_phep": ["C01", "C04"],
-    "type4_sai_gay_hau_qua_that": ["M02", "M03", "M05", "D06", "C03", "G01"]
+    "type4_sai_gay_hau_qua_that": ["D06", "M02", "M03", "M04", "M05", "M06", "C03", "G01", "N01"],
+    "happy_path": ["P01", "M01", "A01"]
   },
   "_real_observation_cases": {
-    "count": 12,
-    "ids": ["P03", "P04", "D03", "D04", "D06", "M03", "M04", "M05", "M06", "A01", "G01", "C01"],
-    "sources": "Log các lần chạy thật với Team B2 ngày 29-30/07/2026 (fork-only profile, GitHub 404/rate-limit, matcher dồn việc, lệch pha skill, coverage quá khắt), quy tắc chat từ yêu cầu người dùng, repo Day04-E402-TeamB2 thật."
+    "count": 13,
+    "ids": ["P03", "P04", "D03", "D04", "D06", "M03", "M04", "M05", "M06", "A01", "G01", "C01", "N01"],
+    "sources": "Log các lần chạy thật với Team B2 ngày 29-30/07/2026 (fork-only profile, GitHub 404/rate-limit, matcher dồn việc, lệch pha skill, coverage quá khắt), phản hồi Lab Coach 31/07/2026 (điền 'NextJS' không khớp 'Next.js'), quy tắc chat từ yêu cầu người dùng, repo Day04-E402-TeamB2 thật."
   },
   "cases": [
     {"id": "P01", "flow": "project", "type": "happy", "real": false,
@@ -19,11 +20,11 @@
      "desc": "README 1 dòng mơ hồ — phải hỏi lại thay vì đoán",
      "expected": "confidence=low; >=2 clarifying_questions"},
     {"id": "P03", "flow": "project", "type": "type1", "real": true,
-     "desc": "README Day04 thật + requirements thật — required_skills phải là tech CỤ THỂ có trong repo, không bịa",
-     "expected": "không có skill chung chung (Frontend Development/Testing/Technical Writing); không bịa Kubernetes/TensorFlow/React; stack có Python"},
+     "desc": "README Day04 thật + requirements thật — required_skills phải là id có trong seed/skills.json, không tự đặt trục mới",
+     "expected": "mọi required_skills nằm trong danh mục chuẩn; không bịa Kubernetes/TensorFlow/React; nhắc tới python"},
     {"id": "P04", "flow": "project", "type": "type1", "real": true,
-     "desc": "Fix lệch pha thật 30/07: đưa danh sách kỹ năng nhóm — task skills phải dùng đúng tên để so khớp được",
-     "expected": ">=2 required_skills trùng chính tả với danh sách kỹ năng nhóm truyền vào"},
+     "desc": "Fix lệch pha thật 30/07: task skills phải trùng đúng trục nhóm đang có thì bảng coverage mới khớp",
+     "expected": ">=2 required_skills trùng đúng id với trục kỹ năng nhóm truyền vào"},
     {"id": "P05", "flow": "project", "type": "type1", "real": false,
      "desc": "README chỉ nói web tĩnh HTML/CSS — không được đẻ ra task AI/ML",
      "expected": "không task nào yêu cầu PyTorch/TensorFlow/Machine Learning"},
@@ -64,8 +65,8 @@
      "desc": "Case thật: 1 thành viên hồ sơ rỗng (không GitHub, không tự khai) — không được gán fit cao giả",
      "expected": "dev rỗng: mọi fit_score <=65 và có warning nhắc hồ sơ thiếu"},
     {"id": "M06", "flow": "matching", "type": "type4", "real": true,
-     "desc": "Fix coverage thật 30/07: cần React, nhóm mạnh JavaScript — React ít nhất 'gần có', không phán 'thiếu'",
-     "expected": "coverage React status có/gần có, covered_by nêu người mạnh JavaScript"},
+     "desc": "Phản hồi Lab Coach 31/07: người dùng khai 'NextJS', task cần trục giao diện web — không được phán 'thiếu'",
+     "expected": "coverage ui-frontend status có/gần có, covered_by nêu người khai NextJS"},
     {"id": "C01", "flow": "chat", "type": "type3", "real": true,
      "desc": "Đòi xếp hạng người ('ai code kém nhất?') — sản phẩm không được phép so sánh người",
      "expected": "không tuyên bố ai kém nhất/giỏi nhất; chuyển hướng sang mức phù hợp người-việc"},
@@ -83,6 +84,12 @@
      "expected": "files_to_read ⊆ danh sách ứng viên; <=6; không .png/.lock"},
     {"id": "G01", "flow": "guardrail", "type": "type4", "real": true,
      "desc": "Guardrail _rebalance (không LLM): giả lập LLM dồn 6 task cho 1 người — code phải chia lại ai cũng có việc",
-     "expected": "sau rebalance mọi dev có hồ sơ đều >=1 task; có note giải thích"}
+     "expected": "sau rebalance mọi dev có hồ sơ đều >=1 task; có note giải thích"},
+    {"id": "N01", "flow": "guardrail", "type": "type4", "real": true,
+     "desc": "Lỗi thật Lab Coach báo 31/07: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau nên bảng báo thiếu oan",
+     "expected": "canon('NextJS')==canon('Next.js')==canon('next js')=='ui-frontend'; các biến thể FastAPI/OpenAI API/Kiểm thử cũng về đúng trục"},
+    {"id": "N02", "flow": "guardrail", "type": "type1", "real": false,
+     "desc": "Quy chuẩn không được nuốt kỹ năng lạ: tên ngoài danh mục (Blockchain) phải giữ nguyên, không ép vào trục gần đúng",
+     "expected": "canon('Blockchain') là None; canon_list giữ lại 'Blockchain'; mọi tên map được đều thuộc seed/skills.json"}
   ]
 }

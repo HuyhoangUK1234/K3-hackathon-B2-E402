@@ -74,6 +74,11 @@ const S = {
   ticketDetail: null, ticketEditStatus: 'pending', ticketEditResponse: '',
   coachModal: false, coachNote: '', coachStatusEdit: 'Analyzed',
   hoverDevId: null, hoverTaskId: null,
+  skillOptions: [],              // danh mục chuẩn từ seed/skills.json
+  skillPicker: null,             // {i, mode:'have'|'want'} — đang mở bảng chọn kỹ năng của ai
+  skillQuery: '',
+  graphMode: 'matrix',           // matrix | flow
+  showDetail: false,             // màn kết quả: mặc định gọn, bật mới hiện chi tiết
   view: 'dashboard', selectedDevId: null, currentUserId: null,
   devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
   sortCol: 'difficulty', sortDir: 'desc',
@@ -85,20 +90,26 @@ const S = {
   // Filled from /api/analyze:
   DEVS: [], TASKS: [], LABS: [], PROJECT: null, FIT_MATRIX: {}, DEFAULT_ASSIGNMENTS: {},
   assignments: {}, warnings: [], workloadNotes: '', SKILL_COVERAGE: [], unassignedTaskIds: [],
+  SKILL_CATALOG: {},             // {skill_id: nhãn tiếng Việt}
+  taskStatus: {},                // {taskId: todo|doing|done}
 };
 
-function emptyMember(){ return { name:'', github:'', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:7 }; }
+/* Kỹ năng luôn là id chuẩn (seed/skills.json); UI chỉ đổi sang nhãn khi hiển thị. */
+function skillLabel(id){
+  if (S.SKILL_CATALOG && S.SKILL_CATALOG[id]) return S.SKILL_CATALOG[id];
+  const o = S.skillOptions.find(x => x.id === id);
+  return o ? o.label : String(id == null ? '' : id);
+}
+function skillNames(list){ return (list||[]).map(skillLabel).join(', '); }
+function emptyMember(){ return { name:'', github:'', skillIds:[], wantLearnIds:[], languages:'', frameworks:'', experienceYears:1, readiness:7 }; }
 function sampleSetup(){
   return { projectName:'', repoUrl:'https://github.com/HuyhoangUK1234/Day04-E402-TeamB2',
     readme:'', deps:'', structure:'', architecture:'Monolith', backlog:'', roadmap:'' };
 }
 function sampleMembers(){
-  return [
-    { name:'Bằng', github:'its6ueq', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
-    { name:'Tâm', github:'tranthithanhtam', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
-    { name:'Tiến', github:'vantiendl', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
-    { name:'Hoàng Việt', github:'HuyhoangUK1234', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
-  ];
+  const mk = (name, github) => ({ ...emptyMember(), name, github, readiness:8 });
+  return [ mk('Bằng','its6ueq'), mk('Tâm','tranthithanhtam'),
+           mk('Tiến','vantiendl'), mk('Hoàng Việt','HuyhoangUK1234') ];
 }
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 S.setup = sampleSetup();
@@ -159,7 +170,7 @@ function buildRadar(skills){
     valuePoints: pointsFor(sk => sk.level / 100),
     grid100: pointsFor(() => 1), grid75: pointsFor(() => 0.75), grid50: pointsFor(() => 0.5), grid25: pointsFor(() => 0.25),
     axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: cx + R * Math.cos(a), y2: cy + R * Math.sin(a) }; }),
-    labels: axes.map((sk, i) => { const a = angleFor(i); const lr = R + 18; return { x: cx + lr * Math.cos(a), y: cy + lr * Math.sin(a), name: sk.name }; }),
+    labels: axes.map((sk, i) => { const a = angleFor(i); const lr = R + 18; return { x: cx + lr * Math.cos(a), y: cy + lr * Math.sin(a), name: skillLabel(sk.name) }; }),
   };
 }
 function chipWidth(text, size){ return Math.round(text.length * size * 0.58) + 26; }
@@ -167,13 +178,17 @@ function chipWidth(text, size){ return Math.round(text.length * size * 0.58) + 2
 function buildFlowGraph(devs, tasks, projectName){
   const COL = { team: 40, member: 210, skill: 520, task: 860, project: 1150 };
   const skillSet = []; const skillOwners = {};
+  // Node kỹ năng đặt tên bằng nhãn tiếng Việt; hai phía (người và task) đều dùng
+  // cùng một id chuẩn nên nhãn trùng nhau tuyệt đối, không còn node trùng lặp.
   devs.forEach((d, di) => devSkills(d.id).forEach(sk => {
     if (sk.level <= 0) return;
-    if (!skillOwners[sk.name]) { skillOwners[sk.name] = []; skillSet.push(sk.name); }
-    skillOwners[sk.name].push({ devIdx: di, level: sk.level });
+    const nm = skillLabel(sk.name);
+    if (!skillOwners[nm]) { skillOwners[nm] = []; skillSet.push(nm); }
+    skillOwners[nm].push({ devIdx: di, level: sk.level });
   }));
   const skillNeeders = {};
-  tasks.forEach((t, ti) => t.skills.forEach(sn => {
+  tasks.forEach((t, ti) => t.skills.forEach(sid => {
+    const sn = skillLabel(sid);
     if (!skillOwners[sn]) { skillOwners[sn] = []; skillSet.push(sn); }
     (skillNeeders[sn] = skillNeeders[sn] || []).push(ti);
   }));
@@ -188,7 +203,7 @@ function buildFlowGraph(devs, tasks, projectName){
   const skillY = {};
   skillOrdered.forEach((n, i) => { skillY[n] = yFor(i, skillOrdered.length); });
   const taskOrdered = tasks.map((t, i) => ({ t, i })).sort((a, b) => {
-    const key = o => { const ys = o.t.skills.map(sn => skillY[sn]).filter(v => v != null);
+    const key = o => { const ys = o.t.skills.map(sid => skillY[skillLabel(sid)]).filter(v => v != null);
       return ys.length ? ys.reduce((x, y) => x + y, 0) / ys.length : H / 2; };
     return key(a) - key(b);
   });
@@ -229,15 +244,17 @@ function buildFlowGraph(devs, tasks, projectName){
   });
   const memberEdges = [];
   devs.forEach((d, di) => devSkills(d.id).forEach(sk => {
-    if (sk.level <= 0 || skillY[sk.name] == null) return;
+    const nm = skillLabel(sk.name);
+    if (sk.level <= 0 || skillY[nm] == null) return;
     memberEdges.push({
-      d: curve(memberNodes[di].rightX, memberY[di], COL.skill - chipWidth(sk.name, 12) / 2, skillY[sk.name]),
+      d: curve(memberNodes[di].rightX, memberY[di], COL.skill - chipWidth(nm, 12) / 2, skillY[nm]),
       stroke: `oklch(0.62 0.13 ${d.hue})`, strokeWidth: 1 + sk.level / 30, opacity: 0.35 + sk.level / 250 });
   }));
   const taskEdges = [];
   taskNodes.forEach(tn => {
     const task = tasks.find(t => t.id === tn.id);
-    task.skills.forEach(sn => {
+    task.skills.forEach(sid => {
+      const sn = skillLabel(sid);
       if (skillY[sn] == null) return;
       taskEdges.push({ d: curve(COL.skill + chipWidth(sn, 12) / 2, skillY[sn], tn.leftX, tn.cy),
         stroke: 'oklch(0.62 0.1 262)', strokeWidth: 1.6, opacity: 0.4 });
@@ -263,6 +280,29 @@ function buildFlowGraph(devs, tasks, projectName){
 /* ================= App actions ================= */
 const App = {
   set(k, v){ S[k] = v; render(); },
+
+  /* ---- danh mục kỹ năng chuẩn (seed/skills.json) ---- */
+  async loadSkills(){
+    try {
+      const list = await fetch('/api/skills').then(r=>r.json());
+      if (Array.isArray(list)) { S.skillOptions = list; render(); }
+    } catch(e) { /* offline: form vẫn dùng được ô "khác" */ }
+  },
+  openSkillPicker(i, mode){ S.skillPicker = { i, mode }; S.skillQuery = ''; render(); },
+  closeSkillPicker(){ S.skillPicker = null; render(); },
+  setSkillQuery(v){
+    S.skillQuery = v;
+    const box = document.getElementById('skill-options');
+    if (box) box.innerHTML = skillOptionList();     // gõ mà re-render cả trang thì mất focus
+  },
+  toggleMemberSkill(i, mode, id){
+    const key = mode === 'want' ? 'wantLearnIds' : 'skillIds';
+    const m = S.members[i];
+    m[key] = m[key] || [];
+    const at = m[key].indexOf(id);
+    if (at >= 0) m[key].splice(at, 1); else m[key].push(id);
+    render();
+  },
 
   /* ---- auth & role ---- */
   async login(role){
@@ -328,6 +368,8 @@ const App = {
     S.assignments = { ...data.assignments };
     S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
     S.SKILL_COVERAGE = data.skillCoverage || [];
+    S.SKILL_CATALOG = data.skillCatalog || {};
+    S.taskStatus = data.taskStatus || {};
     S.unassignedTaskIds = data.unassignedTaskIds || [];
     S.groupId = data.groupId || null; S.groupStatus = data.status || 'Analyzed';
     S.coachFeedback = data.coachFeedback || ''; S.createdAt = data.createdAt || '';
@@ -412,9 +454,23 @@ const App = {
     if (!S.groupId) return;
     try {
       await fetch('/api/groups/' + S.groupId, { method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ assignments: S.assignments }) });
+        body: JSON.stringify({ assignments: S.assignments, taskStatus: S.taskStatus }) });
     } catch(e) {}
   },
+  /* ---- bảng việc: todo -> doing -> done ---- */
+  cycleTaskStatus(ev, taskId){
+    if (ev) ev.stopPropagation();
+    const order = ['todo','doing','done'];
+    const cur = S.taskStatus[taskId] || 'todo';
+    S.taskStatus[taskId] = order[(order.indexOf(cur) + 1) % order.length];
+    App.persistAssignments(); render();
+  },
+  setTaskStatus(ev, taskId, st){
+    if (ev) ev.stopPropagation();
+    S.taskStatus[taskId] = st; App.persistAssignments(); render();
+  },
+  setGraphMode(m){ S.graphMode = m; render(); },
+  toggleDetail(){ S.showDetail = !S.showDetail; render(); },
 
   /* ---- hover sync (task cards <-> workload bar) — DOM trực tiếp, KHÔNG re-render để khỏi giật ---- */
   hoverDev(id){ S.hoverDevId = id; S.hoverTaskId = null; applyHover(); },
@@ -487,6 +543,7 @@ const App = {
   closeExplain(){ S.explainTaskId = null; S.explainDevId = null; render(); },
 
   toggleChat(){ S.chatOpen = !S.chatOpen; render(); },
+  clearChat(){ S.chatMessages = [{from:'ai', text:'Đã xoá hội thoại cũ. Hỏi mình về hồ sơ, bảng việc hay phương án phân công nhé.'}]; render(); },
   setChatInput(v){ S.chatInput = v; },
   chatKey(e){ if (e.key === 'Enter') { S.chatInput = e.target.value; App.sendChat(); } },
 
@@ -510,8 +567,11 @@ const App = {
         unassignedTasks: S.unassignedTaskIds.map(id => (S.TASKS.find(t=>t.id===id)||{}).name).filter(Boolean),
         workloadNotes: S.workloadNotes,
       };
+      // Bộ nhớ hội thoại: gửi kèm các lượt trước (bỏ câu vừa push) để hỏi nối tiếp được.
+      const history = S.chatMessages.slice(0, -1).slice(-16)
+        .map(m => ({ role: m.from === 'ai' ? 'assistant' : 'user', content: m.text }));
       const resp = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ message: text, state_summary: JSON.stringify(summary) }) });
+        body: JSON.stringify({ message: text, state_summary: JSON.stringify(summary), history }) });
       const data = await resp.json();
       S.chatMessages.push({from:'ai', text: data.reply || data.error || 'Lỗi không rõ.'});
     } catch (e) {
@@ -535,6 +595,61 @@ function logoHtml(size){
 }
 function avatarStyle(hue, px, fs){
   return `width:${px}px;height:${px}px;border-radius:50%;background:oklch(0.93 0.05 ${hue});color:oklch(0.35 0.13 ${hue});font-size:${fs}px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto;`;
+}
+
+/* ---------- Chọn kỹ năng bằng tag (không gõ tay) ----------
+   Gõ tay sinh ra "NextJS" vs "Next.js" vs "Next" cho cùng một thứ; mọi so khớp
+   sau đó đều trượt. Ở đây người dùng chỉ chọn trong danh mục seed/skills.json. */
+function skillTagField(i, mode, labelText){
+  const m = S.members[i];
+  const ids = (mode === 'want' ? m.wantLearnIds : m.skillIds) || [];
+  const color = mode === 'want' ? {bg:'#fef3c7', fg:'#b45309', bd:'#fde68a'} : {bg:'#dbeafe', fg:'#1d4ed8', bd:'#bfdbfe'};
+  const chips = ids.map(id => `<span style="display:inline-flex;align-items:center;gap:5px;background:${color.bg};color:${color.fg};border:1px solid ${color.bd};font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:9px;">
+      ${esc(skillLabel(id))}
+      <button title="Bỏ chọn" onclick="App.toggleMemberSkill(${i},'${mode}','${id}')" style="border:none;background:transparent;color:${color.fg};cursor:pointer;font-size:12px;line-height:1;padding:0;">✕</button></span>`).join('');
+  return `<div style="font-size:11.5px;font-weight:700;margin-bottom:5px;color:oklch(0.45 0.01 85);">${labelText}</div>
+    <div style="border:1px solid oklch(0.92 0.006 85);border-radius:8px;padding:7px;min-height:38px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+      ${chips || '<span style="font-size:11.5px;color:#94a3b8;">Chưa chọn</span>'}
+      <button onclick="App.openSkillPicker(${i},'${mode}')" style="margin-left:auto;border:1px dashed #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;">+ Chọn</button>
+    </div>`;
+}
+
+function skillOptionList(){
+  if (!S.skillPicker) return '';
+  const { i, mode } = S.skillPicker;
+  const m = S.members[i];
+  const chosen = (mode === 'want' ? m.wantLearnIds : m.skillIds) || [];
+  const q = (S.skillQuery || '').toLowerCase();
+  const opts = S.skillOptions.filter(o =>
+    !q || o.label.toLowerCase().includes(q) || o.id.includes(q) || (o.description||'').toLowerCase().includes(q));
+  if (!opts.length) return '<div style="font-size:12.5px;color:#94a3b8;padding:10px;">Không có kỹ năng nào khớp. Công nghệ ngoài danh mục thì điền ở ô "Công nghệ khác".</div>';
+  return opts.map(o => {
+    const on = chosen.includes(o.id);
+    return `<button onclick="App.toggleMemberSkill(${i},'${mode}','${o.id}')" style="text-align:left;width:100%;border:1px solid ${on?'#2563eb':'#e2e8f0'};background:${on?'#eff6ff':'#fff'};border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;">
+      <div style="font-size:12.5px;font-weight:800;color:${on?'#1d4ed8':'#0f172a'};">${on?'✓ ':''}${esc(o.label)}
+        <span style="font-weight:600;color:#94a3b8;font-family:monospace;font-size:10.5px;">${esc(o.id)}</span></div>
+      <div style="font-size:11.5px;color:#64748b;margin-top:2px;line-height:1.4;">${esc(o.description||'')}</div>
+    </button>`;
+  }).join('');
+}
+
+function renderSkillPicker(){
+  if (!S.skillPicker) return '';
+  const { i, mode } = S.skillPicker;
+  const m = S.members[i];
+  const count = ((mode === 'want' ? m.wantLearnIds : m.skillIds) || []).length;
+  return `<div class="modal-mask" onclick="App.closeSkillPicker()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;">
+        ${mode === 'want' ? 'Kỹ năng muốn học' : 'Kỹ năng đang có'} — ${esc(m.name || 'thành viên ' + (i+1))}</div>
+      <div style="font-size:12.5px;color:#64748b;margin:5px 0 12px;">Chọn trong danh mục chuẩn của khoá (${S.skillOptions.length} kỹ năng). Đã chọn ${count}.</div>
+      <input id="skill-search" type="text" value="${esc(S.skillQuery)}" placeholder="Tìm kỹ năng…" oninput="App.setSkillQuery(this.value)"
+        style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;font-size:13px;outline:none;margin-bottom:12px;" />
+      <div id="skill-options" style="max-height:46vh;overflow-y:auto;">${skillOptionList()}</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+        <button class="pill-btn" style="background:#2563eb;color:#fff;padding:10px 18px;" onclick="App.closeSkillPicker()">Xong</button>
+      </div>
+    </div></div>`;
 }
 
 function renderSetup(){
@@ -603,12 +718,10 @@ function renderSetup(){
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><div style="${smallLabel}">Ngôn ngữ lập trình</div>
-            <input type="text" placeholder="Java, SQL" value="${esc(m.languages)}" onchange="App.setMember(${i},'languages',this.value)" style="width:100%;${smallInput}" /></div>
-          <div><div style="${smallLabel}">Framework đã dùng</div>
-            <input type="text" placeholder="Spring Boot, React" value="${esc(m.frameworks)}" onchange="App.setMember(${i},'frameworks',this.value)" style="width:100%;${smallInput}" /></div>
-          <div><div style="${smallLabel}">Skill muốn học</div>
-            <input type="text" placeholder="Kubernetes, MLOps" value="${esc(m.wantLearn)}" onchange="App.setMember(${i},'wantLearn',this.value)" style="width:100%;${smallInput}" /></div>
+          <div>${skillTagField(i, 'have', 'Kỹ năng đang có')}</div>
+          <div>${skillTagField(i, 'want', 'Kỹ năng muốn học')}</div>
+          <div><div style="${smallLabel}">Công nghệ khác (nếu ngoài danh mục)</div>
+            <input type="text" placeholder="VD: Unity, Rust" value="${esc(m.frameworks)}" onchange="App.setMember(${i},'frameworks',this.value)" style="width:100%;${smallInput}" /></div>
           <div style="display:flex;gap:12px;">
             <div style="flex:0 0 110px;"><div style="${smallLabel}">Kinh nghiệm (năm)</div>
               <input type="number" min="0" step="0.5" value="${m.experienceYears}" onchange="App.setMember(${i},'experienceYears',this.value)" style="width:100%;${smallInput}" /></div>
@@ -675,10 +788,20 @@ function devAssignedFit(dev){
   return s.length ? Math.round(s.reduce((a, b) => a + b, 0) / s.length) : null;
 }
 function fitText(score){ return score == null ? '—' : score + '%'; }
+/* Fit chỉ đáng tin khi AI đã chấm ĐÚNG cặp người-việc đó. Cặp do người dùng tự kéo
+   thì hiện "chưa chấm" thay vì mượn điểm của cặp khác — đó là điều Lab Coach cần kiểm được. */
+function fitChip(fit){
+  if (!fit) return '';
+  if (fit.fromAI)
+    return `<span title="AI đã chấm đúng cặp này, có lý do trích bằng chứng" style="${fitBadgeStyle(fit.score)}">Fit ${fit.score}%</span>`;
+  return `<span title="Cặp này do người dùng tự kéo — AI chưa chấm nên chưa có Fit Score"
+    style="background:#f1f5f9;color:#64748b;border:1px dashed #cbd5e1;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:9px;">chưa chấm</span>`;
+}
 
 function renderHeader(){
   const tabsDef = [
-    ['dashboard','Tổng quan'],['summary','Tóm tắt bài lab'],['graph','Sơ đồ kỹ năng']];
+    ['dashboard','Tổng quan'],['board','Bảng việc'],['claim','Việc của tôi'],
+    ['summary','Tóm tắt bài lab'],['graph','Sơ đồ kỹ năng']];
   const tabs = tabsDef.map(([key,label]) =>
     `<button style="border:none;background:${S.view===key?'#eef2ff':'transparent'};color:${S.view===key?'#4338ca':'#475569'};font-weight:700;font-size:12.5px;padding:9px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;" onclick="App.setView('${key}')">${label}</button>`).join('');
   return `<div style="background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;flex-wrap:wrap;row-gap:6px;padding:8px 24px;gap:12px;">
@@ -690,21 +813,66 @@ function renderHeader(){
     </div></div>`;
 }
 
+/* Bản rút gọn: chỉ trả lời đúng câu hỏi chính "ai làm phần nào".
+   Mô tả việc, lý do AI, bảng coverage nằm sau nút "Xem chi tiết". */
+function renderAssignmentDigest(){
+  const ws = workloadShares();
+  const segs = S.DEVS.map(d => {
+    const col = devColor(d); const share = ws.shares[d.id] || 0;
+    return share > 0 ? `<div data-hv data-dev="${d.id}" style="width:${share}%;background:${col.hex};" title="${esc(d.name)}: ${share}%"
+      onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()">${share>=12?share+'%':''}</div>` : '';
+  }).join('');
+  const rows = S.DEVS.map(d => {
+    const col = devColor(d);
+    const mine = S.TASKS.filter(t => S.assignments[t.id] === d.id);
+    const chips = mine.map(t => `<span onclick="App.openExplain(event,'${t.id}','${d.id}')"
+        style="display:inline-flex;align-items:center;gap:6px;background:${col.bg};color:#0f172a;border:1px solid ${col.border};border-radius:9px;padding:4px 9px;font-size:11.5px;font-weight:700;cursor:pointer;${taskState(t.id)==='done'?'opacity:.6;text-decoration:line-through;':''}">
+        ${esc(t.name)}<span style="color:#64748b;font-weight:600;">${esc(t.time)}</span></span>`).join('')
+      || '<span style="font-size:11.5px;color:#f59e0b;font-weight:700;">Chưa có việc — nên chia lại</span>';
+    return `<div class="member-card" data-hv data-dev="${d.id}" onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()"
+      style="--mc:${col.hex};--mbg:${col.bg};display:flex;gap:12px;align-items:flex-start;">
+      <div style="width:36px;height:36px;flex:0 0 auto;border-radius:50%;background:${col.bg};border:2px solid ${col.hex};color:${col.hex};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">${esc(d.initials)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-weight:800;font-size:13px;">${esc(d.name)}</span>
+          <span style="font-size:11px;font-weight:700;color:#64748b;">${esc(d.roleSuited)}</span>
+          <span style="margin-left:auto;font-size:11px;font-weight:800;color:${col.hex};">${ws.shares[d.id]||0}% khối lượng</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;">${chips}</div>
+      </div></div>`;
+  }).join('');
+  const open = S.TASKS.filter(t => !S.assignments[t.id]);
+  const openBox = open.length ? `<div style="margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:11px 14px;font-size:12.5px;color:#b91c1c;">
+      <strong>${open.length} việc chưa có người:</strong> ${open.map(t=>esc(t.name)).join(' · ')} — sang tab <strong>Bảng việc</strong> để kéo cho ai đó.</div>` : '';
+  return `<div class="card2" style="padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Ai làm phần nào</div>
+      <button class="pill-btn" style="background:#f1f5f9;color:#475569;" onclick="App.setView('board')">Mở bảng việc →</button>
+    </div>
+    <div class="seg-bar" style="margin:12px 0 14px;">${segs || '<div style="width:100%;background:#e2e8f0;color:#64748b;">Chưa có phân công</div>'}</div>
+    <div style="display:flex;flex-direction:column;gap:9px;">${rows}</div>
+    ${openBox}
+  </div>`;
+}
+
 function renderDashboard(){
   const warns = S.warnings.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;font-size:12.5px;color:#92400e;margin-bottom:16px;"><strong>Cảnh báo từ AI:</strong><br>${S.warnings.map(esc).join('<br>')}</div>` : '';
   const notes = S.workloadNotes ? `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:13px 16px;font-size:12.5px;color:#3730a3;margin-bottom:16px;"><strong>Ghi chú của AI về workload:</strong> ${esc(S.workloadNotes)}</div>` : '';
+  const toggle = `<div style="display:flex;justify-content:center;margin:18px 0 6px;">
+    <button class="pill-btn" style="background:${S.showDetail?'#2563eb':'#fff'};color:${S.showDetail?'#fff':'#475569'};border:1px solid ${S.showDetail?'#2563eb':'#e2e8f0'};padding:9px 18px;" onclick="App.toggleDetail()">
+      ${S.showDetail ? '▲ Thu gọn chi tiết' : '▼ Xem chi tiết (mô tả việc, cảnh báo, kỹ năng còn thiếu)'}</button></div>`;
   return `<div class="fadeIn">
     ${renderDetailHeader()}
     ${renderMetricCards()}
-    ${warns}${notes}
-    ${renderOverviewSplit()}
-    ${renderSkillCoverage()}</div>`;
+    ${renderAssignmentDigest()}
+    ${toggle}
+    ${S.showDetail ? `${warns}${notes}${renderOverviewSplit()}${renderSkillCoverage()}` : ''}</div>`;
 }
 
 function renderDevelopers(){
   const allSkillNames = [...new Set(S.DEVS.flatMap(d => devSkills(d.id).map(sk => sk.name)))];
   const chips = ['all', ...allSkillNames].map(name =>
-    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(name)}</button>`).join('');
+    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(skillLabel(name))}</button>`).join('');
   const filtered = S.DEVS.filter(d => {
     const mS = d.name.toLowerCase().includes(S.devSearch.toLowerCase());
     const mK = S.devSkillFilter === 'all' || devSkills(d.id).some(sk => sk.name === S.devSkillFilter);
@@ -726,7 +894,7 @@ function renderDevelopers(){
     const self = /self[- ]?report/i.test(ev);
     return `<div style="margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-        <span><strong>${esc(sk.name)}</strong>${self?' <span style="font-size:10px;font-weight:700;color:oklch(0.55 0.11 55);background:oklch(0.96 0.04 55);padding:1px 6px;border-radius:8px;">tự khai</span>':''}</span>
+        <span><strong>${esc(skillLabel(sk.name))}</strong>${self?' <span style="font-size:10px;font-weight:700;color:oklch(0.55 0.11 55);background:oklch(0.96 0.04 55);padding:1px 6px;border-radius:8px;">tự khai</span>':''}</span>
         <span style="color:oklch(0.5 0.01 85);">${sk.level}%</span></div>
       <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;">
         <div style="height:100%;background:${self?'oklch(0.72 0.1 55)':'oklch(0.56 0.15 262)'};border-radius:4px;width:${sk.level}%;"></div></div>
@@ -833,7 +1001,7 @@ function renderSkillCoverage(){
   const rows = [...S.SKILL_COVERAGE].sort((a,b)=>(order[a.status]??3)-(order[b.status]??3)).map(c => {
     const st = stMap[c.status] || stMap['thiếu'];
     return `<div style="display:grid;grid-template-columns:170px 92px 1fr;gap:12px;padding:10px 4px;border-bottom:1px solid oklch(0.95 0.005 85);align-items:start;font-size:12.5px;">
-      <div style="font-weight:700;">${esc(c.skill)}</div>
+      <div style="font-weight:700;">${esc(skillLabel(c.skill))}</div>
       <div><span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:10px;background:${st.bg};color:${st.fg};white-space:nowrap;">${st.label}</span></div>
       <div style="color:oklch(0.4 0.01 85);line-height:1.45;">
         ${c.covered_by.length ? c.covered_by.map(n=>`<span style="display:inline-block;background:oklch(0.95 0.02 262);color:oklch(0.38 0.1 262);font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:11px;margin:1px 4px 1px 0;">${esc(n)}</span>`).join('') : ''}
@@ -850,6 +1018,87 @@ function renderSkillCoverage(){
   </div>`;
 }
 
+/* Ma trận người × kỹ năng: dữ liệu thuần, không gọi AI thêm.
+   needed  = trục bài lab đòi (từ required_skills của task, đã chuẩn hoá id)
+   holders = số người đạt >=40 trên trục đó -> 1 người là "điểm tựa duy nhất". */
+function skillMatrixData(){
+  const need = {};
+  S.TASKS.forEach(t => (t.skills||[]).forEach(s => { need[s] = (need[s] || 0) + 1; }));
+  const levels = {};
+  S.DEVS.forEach(d => devSkills(d.id).forEach(sk => {
+    (levels[sk.name] = levels[sk.name] || {})[d.id] = sk.level;
+  }));
+  const ids = [...new Set([...Object.keys(need), ...Object.keys(levels)])];
+  const rows = ids.map(id => {
+    const per = levels[id] || {};
+    const vals = Object.values(per);
+    const best = vals.length ? Math.max(...vals) : 0;
+    const holders = vals.filter(v => v >= 40).length;
+    const bestDev = Object.keys(per).sort((a,b) => per[b]-per[a])[0] || null;
+    return { id, per, best, holders, bestDev, needed: !!need[id], taskCount: need[id] || 0 };
+  });
+  const rank = r => !r.needed ? 4 : (r.best < 30 ? 0 : r.holders <= 1 ? 1 : r.best < 60 ? 2 : 3);
+  rows.sort((a,b) => rank(a) - rank(b) || b.taskCount - a.taskCount || b.best - a.best);
+  const needed = rows.filter(r => r.needed);
+  return { rows, needed,
+    gaps: needed.filter(r => r.best < 30).length,
+    weak: needed.filter(r => r.best >= 30 && r.best < 60).length,
+    solid: needed.filter(r => r.best >= 60).length,
+    spof: needed.filter(r => r.best >= 30 && r.holders <= 1).length };
+}
+
+function renderSkillMatrix(){
+  const m = skillMatrixData();
+  if (!m.rows.length) return '<div style="font-size:13px;color:#94a3b8;padding:20px;">Chưa có dữ liệu kỹ năng.</div>';
+  const stat = (n, label, color, bg) => `<div style="flex:1;min-width:130px;background:${bg};border:1px solid ${color}33;border-radius:12px;padding:12px 14px;">
+    <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:21px;color:${color};">${n}</div>
+    <div style="font-size:11.5px;color:#475569;font-weight:600;line-height:1.35;">${label}</div></div>`;
+  const head = S.DEVS.map(d => {
+    const col = devColor(d);
+    return `<th data-hv data-dev="${d.id}" onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()"
+      style="--mc:${col.hex};--mbg:${col.bg};padding:8px 4px;font-size:11px;font-weight:800;color:${col.hex};text-align:center;white-space:nowrap;cursor:pointer;">
+      ${esc(d.name)}</th>`;
+  }).join('');
+  const body = m.rows.map(r => {
+    const cells = S.DEVS.map(d => {
+      const lv = r.per[d.id] || 0;
+      const col = devColor(d);
+      const bg = lv <= 0 ? '#f8fafc' : `color-mix(in srgb, ${col.hex} ${Math.round(18 + lv * 0.6)}%, white)`;
+      const fg = lv >= 60 ? '#fff' : '#334155';
+      return `<td data-hv data-dev="${d.id}" onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()"
+        style="--mc:${col.hex};--mbg:${col.bg};padding:3px;text-align:center;">
+        <div style="background:${bg};color:${fg};border-radius:8px;padding:6px 0;font-size:11.5px;font-weight:800;">${lv > 0 ? lv : '·'}</div></td>`;
+    }).join('');
+    const tag = !r.needed ? `<span style="font-size:10.5px;font-weight:700;color:#94a3b8;">ngoài yêu cầu</span>`
+      : r.best < 30 ? `<span style="font-size:10.5px;font-weight:800;color:#b91c1c;background:#fee2e2;padding:2px 7px;border-radius:8px;">✕ chưa ai làm được</span>`
+      : r.holders <= 1 ? `<span style="font-size:10.5px;font-weight:800;color:#b45309;background:#fef3c7;padding:2px 7px;border-radius:8px;">⚠ chỉ 1 người gánh</span>`
+      : `<span style="font-size:10.5px;font-weight:800;color:#047857;background:#d1fae5;padding:2px 7px;border-radius:8px;">✓ có ${r.holders} người</span>`;
+    return `<tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:6px 10px 6px 2px;min-width:190px;">
+        <div style="font-size:12.5px;font-weight:700;">${esc(skillLabel(r.id))}</div>
+        <div style="font-size:10.5px;color:#94a3b8;">${r.needed ? r.taskCount + ' đầu việc cần' : 'nhóm có sẵn'}</div>
+      </td>${cells}
+      <td style="padding:6px 2px 6px 10px;white-space:nowrap;">${tag}</td></tr>`;
+  }).join('');
+  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+      ${stat(m.needed.length, 'kỹ năng bài lab đòi hỏi', '#2563eb', '#eff6ff')}
+      ${stat(m.solid, 'đã có người đủ sức (≥60)', '#059669', '#ecfdf5')}
+      ${stat(m.spof, 'chỉ 1 người gánh — nghỉ là kẹt', '#d97706', '#fffbeb')}
+      ${stat(m.gaps, 'chưa ai làm được — cần học/nhờ coach', '#dc2626', '#fef2f2')}
+    </div>
+    <div class="card2" style="padding:18px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr><th style="text-align:left;padding:8px 2px;font-size:11px;font-weight:800;color:#64748b;">Kỹ năng (danh mục chuẩn của khoá)</th>${head}
+          <th style="padding:8px 10px;font-size:11px;font-weight:800;color:#64748b;text-align:left;">Nhận xét</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      <div style="font-size:11.5px;color:#64748b;margin-top:12px;line-height:1.5;">
+        Số trong ô = mức thành thạo (0–100) do AI chấm từ GitHub + tự khai, mỗi mức đều có bằng chứng ở tab hồ sơ.
+        Rê chuột vào tên thành viên để soi cột của người đó.
+      </div>
+    </div>`;
+}
+
 function renderGraph(){
   const g = buildFlowGraph(S.DEVS, S.TASKS, S.PROJECT.name);
   const edges = g.edges.map(e => `<path d="${e.d}" fill="none" stroke="${e.stroke}" stroke-width="${e.strokeWidth}" stroke-opacity="${e.opacity}"></path>`).join('');
@@ -864,11 +1113,21 @@ function renderGraph(){
   const tasks = g.taskNodes.map(t => `<g>
       <rect x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" rx="10" fill="oklch(0.97 0.02 262)" stroke="oklch(0.68 0.1 262)" stroke-width="1.8"></rect>
       <text x="${t.textX}" y="${t.textY}" text-anchor="middle" font-size="12.5" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.34 0.11 262)">${esc(t.name)}</text></g>`).join('');
-  return `<div>
-    <div style="margin-bottom:20px;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Sơ đồ kỹ năng nhóm</div>
-      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Đọc từ trái sang phải: cả nhóm → từng thành viên → kỹ năng → vấn đề của dự án → dự án. Các cột được sắp để nét nối hạn chế cắt nhau.</div>
-    </div>
+  const modeBtn = (key, label, hint) =>
+    `<button class="pill-btn" title="${hint}" style="background:${S.graphMode===key?'#2563eb':'#f1f5f9'};color:${S.graphMode===key?'#fff':'#475569'};" onclick="App.setGraphMode('${key}')">${label}</button>`;
+  const header = `<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:18px;">
+      <div>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Sơ đồ kỹ năng nhóm</div>
+        <div style="font-size:13.5px;color:#64748b;margin-top:4px;">${S.graphMode==='matrix'
+          ? 'Ai mạnh trục nào, bài lab đòi trục nào, chỗ nào cả nhóm còn trống — nhìn một bảng là ra.'
+          : 'Đọc từ trái sang phải: cả nhóm → thành viên → kỹ năng → đầu việc → dự án.'}</div>
+      </div>
+      <div style="display:flex;gap:6px;">${modeBtn('matrix','Ma trận kỹ năng','Bảng người × kỹ năng')}${modeBtn('flow','Sơ đồ luồng','Đồ thị người - kỹ năng - việc')}</div>
+    </div>`;
+  if (S.graphMode === 'matrix')
+    return `<div class="fadeIn">${header}${renderSkillMatrix()}${renderSkillCoverage()}</div>`;
+  return `<div class="fadeIn">
+    ${header}
     <div style="${card}border-radius:16px;padding:18px;overflow-x:auto;">
       <svg viewBox="${g.viewBox}" style="width:1320px;max-width:none;display:block;">
         ${g.headers.map(h => `<text x="${h.x}" y="22" text-anchor="middle" font-size="10.5" letter-spacing="1.2" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.62 0.01 85)">${h.label}</text>`).join('')}
@@ -911,7 +1170,7 @@ function renderProject(){
     const skillChips = t.skills.map(sn => {
       const owner = S.DEVS.find(dd => devSkills(dd.id).some(x => x.name.toLowerCase() === sn.toLowerCase()));
       const ok = !!owner;
-      return `<span title="${ok ? esc(owner.name + ' có kỹ năng này') : 'Chưa ai trong nhóm khai kỹ năng này'}" style="background:${ok?'oklch(0.93 0.03 262)':'oklch(0.96 0.04 55)'};color:${ok?'oklch(0.4 0.13 262)':'oklch(0.45 0.13 55)'};font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;">${esc(sn)}${ok?'':' ⚠'}</span>`;
+      return `<span title="${ok ? esc(owner.name + ' có kỹ năng này') : 'Chưa ai trong nhóm khai kỹ năng này'}" style="background:${ok?'oklch(0.93 0.03 262)':'oklch(0.96 0.04 55)'};color:${ok?'oklch(0.4 0.13 262)':'oklch(0.45 0.13 55)'};font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;">${esc(skillLabel(sn))}${ok?'':' ⚠'}</span>`;
     }).join('');
     return `<div style="${card}border-radius:14px;padding:18px;margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
@@ -933,7 +1192,7 @@ function renderProject(){
         </div>
       </div>
       ${dev && fit ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid oklch(0.95 0.005 85);font-size:12.5px;color:oklch(0.4 0.01 85);line-height:1.5;">${esc(fit.reason)}</div>` : ''}
-      ${dev && fit && fit.skillsToLearn.length ? `<div style="margin-top:8px;font-size:12px;color:oklch(0.45 0.11 55);">Cần học thêm: <strong>${esc(fit.skillsToLearn.join(', '))}</strong></div>` : ''}
+      ${dev && fit && fit.skillsToLearn.length ? `<div style="margin-top:8px;font-size:12px;color:oklch(0.45 0.11 55);">Cần học thêm: <strong>${esc(skillNames(fit.skillsToLearn))}</strong></div>` : ''}
     </div>`;
   }).join('') || '<div style="padding:26px;text-align:center;font-size:13px;color:oklch(0.55 0.01 85);">Không có đầu việc nào khớp bộ lọc.</div>';
 
@@ -968,72 +1227,103 @@ function renderProject(){
   </div>`;
 }
 
-function renderMatching(){
-  const pool = S.TASKS.filter(t => !S.assignments[t.id]).map(t =>
-    `<div draggable="true" ondragstart="App.dragStart(event,'${t.id}')" onclick="App.openExplain(event,'${t.id}',null)" style="${card}border-radius:10px;padding:12px;margin-bottom:10px;cursor:grab;">
-      <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
-      <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-top:4px;">${esc(t.skills.join(', '))}</div>
-      <div style="margin-top:8px;"><span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span></div>
-    </div>`).join('');
+/* ---------- Bảng việc (Matching) — quản lý task nhỏ, không cần Jira ---------- */
+const TASK_STATES = [
+  ['todo',  'Chưa làm',  '#64748b', '#f1f5f9'],
+  ['doing', 'Đang làm',  '#1d4ed8', '#dbeafe'],
+  ['done',  'Xong',      '#047857', '#d1fae5'],
+];
+function taskState(id){ return S.taskStatus[id] || 'todo'; }
+function statusPill(id){
+  const [, lb, fg, bg] = TASK_STATES.find(s => s[0] === taskState(id)) || TASK_STATES[0];
+  return `<button onclick="App.cycleTaskStatus(event,'${id}')" title="Bấm để đổi trạng thái"
+    style="border:1px solid ${fg}33;background:${bg};color:${fg};font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:9px;cursor:pointer;">${lb}</button>`;
+}
+function renderTaskBoard(){
+  const done = S.TASKS.filter(t => taskState(t.id) === 'done').length;
+  const doing = S.TASKS.filter(t => taskState(t.id) === 'doing').length;
+  const unassignedCount = S.TASKS.filter(t => !S.assignments[t.id]).length;
+  const ws = workloadShares();
+  const taskCard = (t, dev) => {
+    const col = dev ? devColor(dev) : {hex:'#94a3b8', bg:'#f8fafc'};
+    const fit = dev ? computeFit(t, dev) : null;
+    const st = taskState(t.id);
+    return `<div draggable="true" ondragstart="App.dragStart(event,'${t.id}')" onclick="App.openExplain(event,'${t.id}',${dev?`'${dev.id}'`:'null'})"
+      style="border:1px solid #e2e8f0;border-left:5px solid ${col.hex};border-radius:12px;padding:11px 12px;margin-bottom:9px;cursor:grab;background:${st==='done'?'#f8fafc':'#fff'};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="font-weight:800;font-size:12.5px;${st==='done'?'text-decoration:line-through;color:#94a3b8;':''}">${esc(t.name)}</div>
+        ${fitChip(fit)}
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-top:5px;">${esc(skillNames(t.skills))}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:9px;">
+        ${statusPill(t.id)}
+        <span style="font-size:11px;color:#94a3b8;font-weight:600;">${esc(t.time)}</span>
+      </div>
+    </div>`;
+  };
   const lanes = S.DEVS.map(d => {
-    const laneTasks = S.TASKS.filter(t => S.assignments[t.id] === d.id);
-    const cards = laneTasks.map(t => {
-      const fit = computeFit(t, d);
-      return `<div draggable="true" ondragstart="App.dragStart(event,'${t.id}')" onclick="App.openExplain(event,'${t.id}','${d.id}')" style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.9 0.006 85);border-radius:10px;padding:12px;margin-bottom:10px;cursor:grab;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
-          <div style="${fitBadgeStyle(fit.score)}">${fit.score}%</div></div>
-        <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-top:4px;">${esc(t.skills.join(', '))}</div>
-        <div style="margin-top:8px;"><span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span></div>
-      </div>`;
-    }).join('');
-    const days = laneTasks.reduce((a,t)=>a+(t.estimateDays||0),0);
-    return `<div style="flex:0 0 240px;${card}border-radius:14px;padding:14px;min-height:420px;" ondragover="App.allowDrop(event)" ondrop="App.dropOnDev(event,'${d.id}')">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <div style="${avatarStyle(d.hue,26,10.5)}">${esc(d.initials)}</div>
-        <div style="font-weight:700;font-size:13px;">${esc(d.name)}</div></div>
-      <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-bottom:12px;">${laneTasks.length} việc · ${days % 1 === 0 ? days : days.toFixed(1)} ngày · Fit TB ${fitText(devAssignedFit(d))}</div>
-      ${cards}</div>`;
+    const mine = S.TASKS.filter(t => S.assignments[t.id] === d.id);
+    const col = devColor(d);
+    const dn = mine.filter(t => taskState(t.id) === 'done').length;
+    const days = mine.reduce((a,t)=>a+(t.estimateDays||0),0);
+    return `<div style="flex:0 0 250px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:13px;min-height:340px;"
+      ondragover="App.allowDrop(event)" ondrop="App.dropOnDev(event,'${d.id}')">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:26px;height:26px;border-radius:50%;background:${col.bg};border:2px solid ${col.hex};color:${col.hex};display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;">${esc(d.initials)}</div>
+        <div style="font-weight:800;font-size:12.5px;">${esc(d.name)}</div>
+        <span style="margin-left:auto;font-size:10.5px;font-weight:800;color:${col.hex};">${ws.shares[d.id]||0}%</span>
+      </div>
+      <div style="font-size:10.5px;color:#64748b;margin:5px 0 11px;">${dn}/${mine.length} xong · ${days % 1 === 0 ? days : days.toFixed(1)} ngày</div>
+      ${mine.map(t => taskCard(t, d)).join('') || '<div style="font-size:11.5px;color:#cbd5e1;font-style:italic;">Kéo việc vào đây</div>'}
+    </div>`;
   }).join('');
+  const pool = S.TASKS.filter(t => !S.assignments[t.id]).map(t => taskCard(t, null)).join('')
+    || '<div style="font-size:11.5px;color:#cbd5e1;font-style:italic;">Mọi việc đã có người</div>';
   const rows = Object.entries(S.assignments).filter(([,devId]) => devId).map(([taskId, devId]) => {
-    const task = S.TASKS.find(t => t.id === taskId);
-    const dev = S.DEVS.find(d => d.id === devId);
-    const fit = computeFit(task, dev);
-    return { devName: dev.name, taskName: task.name, fit };
-  }).sort((a,b) => (b.fit.score ?? -1) - (a.fit.score ?? -1)).map(r =>
-    `<div style="display:grid;grid-template-columns:150px 170px 90px 1fr;gap:0;padding:12px 4px;border-bottom:1px solid oklch(0.95 0.005 85);align-items:start;font-size:12.5px;">
+    const task = S.TASKS.find(t => t.id === taskId); const dev = S.DEVS.find(d => d.id === devId);
+    if (!task || !dev) return null;
+    return { devName: dev.name, taskName: task.name, fit: computeFit(task, dev) };
+  }).filter(Boolean).sort((a,b) => (b.fit.score ?? -1) - (a.fit.score ?? -1)).map(r =>
+    `<div style="display:grid;grid-template-columns:130px 160px 80px 1fr;gap:0;padding:10px 4px;border-bottom:1px solid #f1f5f9;align-items:start;font-size:12.5px;">
       <div style="font-weight:700;">${esc(r.devName)}</div><div>${esc(r.taskName)}</div>
       <div><span style="${fitBadgeStyle(r.fit.score)}">${fitText(r.fit.score)}</span></div>
-      <div style="color:oklch(0.4 0.01 85);line-height:1.45;">${esc(r.fit.reason)}
-        ${r.fit.skillsToLearn.length ? `<div style="margin-top:3px;color:oklch(0.45 0.11 55);">Cần học thêm: <strong>${esc(r.fit.skillsToLearn.join(', '))}</strong></div>` : ''}</div></div>`).join('');
-  const unassigned = S.unassignedTaskIds
-    .map(id => (S.TASKS.find(t => t.id === id) || {}).name).filter(Boolean);
-  const banner = unassigned.length ? `<div style="background:oklch(0.96 0.04 25);border:1px solid oklch(0.82 0.09 25);border-radius:12px;padding:13px 16px;font-size:12.5px;color:oklch(0.42 0.14 25);margin-bottom:16px;">
-      <strong>AI không giao được ${unassigned.length} đầu việc</strong> (không ai đủ phù hợp): ${esc(unassigned.join(' · '))}. Cần bàn lại phạm vi hoặc cử người học.</div>` : '';
-  const notes = S.workloadNotes ? `<div style="background:oklch(0.96 0.02 262);border:1px solid oklch(0.87 0.05 262);border-radius:12px;padding:13px 16px;font-size:12.5px;color:oklch(0.35 0.1 262);margin-bottom:16px;">
-      <strong>Ghi chú workload của AI:</strong> ${esc(S.workloadNotes)}</div>` : '';
-  return `<div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div style="color:#475569;line-height:1.45;">${esc(r.fit.reason)}
+        ${r.fit.skillsToLearn.length ? `<div style="margin-top:3px;color:#b45309;">Cần học thêm: <strong>${esc(skillNames(r.fit.skillsToLearn))}</strong></div>` : ''}</div></div>`).join('');
+  const unassigned = S.unassignedTaskIds.map(id => (S.TASKS.find(t => t.id === id) || {}).name).filter(Boolean);
+  const banner = unassigned.length ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 15px;font-size:12.5px;color:#b91c1c;margin-bottom:14px;">
+      <strong>AI không giao được ${unassigned.length} việc</strong> (không ai đủ phù hợp): ${esc(unassigned.join(' · '))}.</div>` : '';
+  return `<div class="fadeIn">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
       <div>
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 3 — Matching Developer × Task</div>
-        <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kéo thả để chỉnh phân công. Nhấn vào thẻ để xem lý do AI đưa ra. Cặp bạn tự kéo sẽ không có Fit Score vì AI chưa chấm cặp đó.</div>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Bảng việc của nhóm</div>
+        <div style="font-size:13.5px;color:#64748b;margin-top:4px;">Kéo thẻ sang cột người khác để đổi người làm; bấm nhãn trạng thái để chuyển Chưa làm → Đang làm → Xong. Mọi thay đổi lưu cho cả nhóm và Lab Coach.</div>
       </div>
-      <button style="background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.resetAssignments()">Về phân bổ AI đề xuất</button>
+      <div style="display:flex;gap:6px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;" onclick="App.toggleDetail()">${S.showDetail?'Ẩn lý do AI':'Xem lý do AI'}</button>
+        <button class="pill-btn" style="background:#2563eb;color:#fff;" onclick="App.resetAssignments()">Về phân công AI đề xuất</button>
+      </div>
     </div>
-    ${banner}${notes}
-    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;margin-bottom:26px;">
-      <div style="flex:0 0 240px;background:oklch(0.96 0.006 85);border:1px dashed oklch(0.82 0.008 85);border-radius:14px;padding:14px;min-height:420px;" ondragover="App.allowDrop(event)" ondrop="App.dropOnPool(event)">
-        <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Chưa phân công</div>
-        <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-bottom:12px;">${S.TASKS.filter(t=>!S.assignments[t.id]).length} việc</div>
+    ${banner}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;">
+      <span style="background:#d1fae5;color:#047857;font-weight:800;padding:5px 11px;border-radius:10px;">${done}/${S.TASKS.length} việc xong</span>
+      <span style="background:#dbeafe;color:#1d4ed8;font-weight:800;padding:5px 11px;border-radius:10px;">${doing} đang làm</span>
+      <span style="background:#f1f5f9;color:#475569;font-weight:800;padding:5px 11px;border-radius:10px;">${unassignedCount} chưa có người</span>
+      <span style="background:#fffbeb;color:#b45309;font-weight:800;padding:5px 11px;border-radius:10px;">Cân bằng ${ws.balance}%</span>
+    </div>
+    <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;">
+      <div style="flex:0 0 250px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:14px;padding:13px;min-height:340px;"
+        ondragover="App.allowDrop(event)" ondrop="App.dropOnPool(event)">
+        <div style="font-weight:800;font-size:12.5px;">Chưa phân công</div>
+        <div style="font-size:10.5px;color:#64748b;margin:5px 0 11px;">${unassignedCount} việc</div>
         ${pool}</div>
       ${lanes}
     </div>
-    <div style="${card}border-radius:16px;padding:22px;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:14px;">Kết quả phân công & lý do</div>
-      <div style="display:grid;grid-template-columns:150px 170px 90px 1fr;gap:0;font-size:12px;color:oklch(0.5 0.01 85);padding:0 4px 10px;border-bottom:1px solid oklch(0.9 0.006 85);">
-        <div>Thành viên</div><div>Công việc</div><div>Fit Score</div><div>Lý do phân công</div></div>
-      ${rows}
-    </div></div>`;
+    ${S.showDetail ? `<div class="card2" style="padding:20px;margin-top:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;margin-bottom:12px;">Vì sao AI giao như vậy</div>
+      <div style="display:grid;grid-template-columns:130px 160px 80px 1fr;gap:0;font-size:11.5px;color:#64748b;padding:0 4px 9px;border-bottom:1px solid #e2e8f0;">
+        <div>Thành viên</div><div>Công việc</div><div>Fit</div><div>Lý do (có trích bằng chứng)</div></div>
+      ${rows}</div>` : ''}
+  </div>`;
 }
 
 function renderClaim(){
@@ -1044,8 +1334,8 @@ function renderClaim(){
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <div style="font-weight:700;font-size:13.5px;">${esc(t.name)}</div>
         <div style="${fitBadgeStyle(fit.score)}">${fitText(fit.score)}</div></div>
-      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(t.skills.join(', '))} · ${esc(t.time)}</div>
-      <div style="font-size:12px;color:${fit.skillsToLearn.length?'oklch(0.45 0.11 55)':'oklch(0.4 0.11 175)'};margin-top:5px;">${fit.skillsToLearn.length ? 'Sẽ phải học thêm: ' + esc(fit.skillsToLearn.join(', ')) : 'Bạn đã có đủ kỹ năng yêu cầu'}</div>
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(skillNames(t.skills))} · ${esc(t.time)}</div>
+      <div style="font-size:12px;color:${fit.skillsToLearn.length?'oklch(0.45 0.11 55)':'oklch(0.4 0.11 175)'};margin-top:5px;">${fit.skillsToLearn.length ? 'Sẽ phải học thêm: ' + esc(skillNames(fit.skillsToLearn)) : 'Bạn đã có đủ kỹ năng yêu cầu'}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:11px;">
         <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
         <button style="background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border:none;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;" onclick="App.claimTask('${t.id}')">Nhận việc này</button>
@@ -1057,8 +1347,8 @@ function renderClaim(){
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <div style="font-weight:700;font-size:13.5px;">${esc(t.name)}</div>
         <div style="${fitBadgeStyle(fit.score)}">${fitText(fit.score)}</div></div>
-      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(t.skills.join(', '))} · ${esc(t.time)}</div>
-      ${fit.skillsToLearn.length ? `<div style="font-size:12px;color:oklch(0.45 0.11 55);margin-top:5px;">Cần học thêm: ${esc(fit.skillsToLearn.join(', '))}</div>` : ''}
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(skillNames(t.skills))} · ${esc(t.time)}</div>
+      ${fit.skillsToLearn.length ? `<div style="font-size:12px;color:oklch(0.45 0.11 55);margin-top:5px;">Cần học thêm: ${esc(skillNames(fit.skillsToLearn))}</div>` : ''}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:11px;">
         <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
         <button style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.88 0.006 85);border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;" onclick="App.releaseTask('${t.id}')">Trả lại việc</button>
@@ -1091,7 +1381,7 @@ function renderExplain(){
     devName = dev.name; score = fitText(fit.score); reason = fit.reason;
     if (fit.skillsToLearn.length)
       breakdown = `<div style="background:oklch(0.97 0.03 55);border:1px solid oklch(0.85 0.07 55);border-radius:10px;padding:12px 14px;font-size:12.5px;color:oklch(0.42 0.12 55);">
-        <strong>Cần học thêm để làm được việc này:</strong><br>${esc(fit.skillsToLearn.join(', '))}</div>`;
+        <strong>Cần học thêm để làm được việc này:</strong><br>${esc(skillNames(fit.skillsToLearn))}</div>`;
     // Đối chiếu từng kỹ năng task cần với mức thật của người này + bằng chứng.
     const skills = devSkills(dev.id);
     skillMatch = task.skills.map(sk => {
@@ -1099,14 +1389,14 @@ function renderExplain(){
       const level = found ? found.level : 0;
       const ev = found ? devEvidence(dev.id, found.name) : '';
       return `<div style="margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk)}</span><span style="color:${found?'oklch(0.5 0.01 85)':'oklch(0.55 0.13 55)'};">${found ? level + '%' : 'Chưa có'}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(skillLabel(sk))}</span><span style="color:${found?'oklch(0.5 0.01 85)':'oklch(0.55 0.13 55)'};">${found ? level + '%' : 'Chưa có'}</span></div>
         <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:${level}%;background:${level>0?'oklch(0.56 0.15 262)':'oklch(0.85 0.01 85)'};"></div></div>
         ${ev?`<div style="font-size:11px;color:oklch(0.55 0.01 85);margin-top:3px;">${esc(ev)}</div>`:''}
       </div>`;
     }).join('');
   } else {
     skillMatch = task.skills.map(sk => `<div style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk)}</span><span style="color:oklch(0.5 0.01 85);">—</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(skillLabel(sk))}</span><span style="color:oklch(0.5 0.01 85);">—</span></div>
       <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:0%;"></div></div></div>`).join('');
   }
   return `<div style="position:fixed;inset:0;background:oklch(0.2 0.01 85 / 0.35);z-index:40;display:flex;justify-content:flex-end;" onclick="App.closeExplain()">
@@ -1116,7 +1406,7 @@ function renderExplain(){
         <button style="border:none;background:oklch(0.94 0.006 85);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;" onclick="App.closeExplain()">✕</button>
       </div>
       <div style="font-weight:700;font-size:15px;">${esc(task.name)}</div>
-      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin:4px 0 16px;">Kỹ năng cần: ${esc(task.skills.join(', '))} · Độ khó ${task.difficulty} · ${esc(task.time)}</div>
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin:4px 0 16px;">Kỹ năng cần: ${esc(skillNames(task.skills))} · Độ khó ${task.difficulty} · ${esc(task.time)}</div>
       <div style="background:oklch(0.98 0.003 85);border-radius:12px;padding:16px;margin-bottom:18px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div style="font-weight:700;font-size:14px;">${esc(devName)}</div>
@@ -1141,8 +1431,14 @@ function renderChat(){
   const busy = S.chatBusy ? `<div style="display:flex;justify-content:flex-start;"><div style="background:oklch(0.94 0.01 262);color:oklch(0.45 0.05 262);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;">AI đang trả lời…</div></div>` : '';
   return `${fab}<div style="position:fixed;bottom:88px;right:24px;width:340px;height:440px;${card}border-radius:16px;box-shadow:0 12px 32px oklch(0.2 0.01 85 / 0.18);display:flex;flex-direction:column;z-index:50;">
     <div style="padding:14px 16px;border-bottom:1px solid oklch(0.9 0.006 85);display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-weight:700;font-size:13.5px;">Trợ lý AI</div>
-      <button style="border:none;background:oklch(0.94 0.006 85);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:12px;" onclick="App.toggleChat()">✕</button>
+      <div>
+        <div style="font-weight:700;font-size:13.5px;">Trợ lý AI</div>
+        <div style="font-size:10.5px;color:#94a3b8;">Nhớ ${Math.max(0, S.chatMessages.length - 1)} lượt trong hội thoại này</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button title="Xoá bộ nhớ hội thoại" style="border:none;background:oklch(0.94 0.006 85);height:24px;border-radius:7px;cursor:pointer;font-size:11px;padding:0 8px;font-weight:700;" onclick="App.clearChat()">Hội thoại mới</button>
+        <button style="border:none;background:oklch(0.94 0.006 85);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:12px;" onclick="App.toggleChat()">✕</button>
+      </div>
     </div>
     <div id="chat-scroll" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">${msgs}${busy}</div>
     <div style="padding:12px;border-top:1px solid oklch(0.9 0.006 85);display:flex;gap:8px;">
@@ -1181,13 +1477,21 @@ function workloadShares(){
   }
   return { shares, balance, totalDays: total };
 }
-function avgFitScore(){
+/* Chỉ tính trung bình trên các cặp AI ĐÃ chấm. Trước đây cặp chưa chấm bị tính là 0
+   nên vừa kéo tay một việc là điểm trung bình tụt — con số sai làm coach mất tin. */
+function fitStats(){
   const assigned = Object.entries(S.assignments).filter(([,v])=>v);
-  if (!assigned.length) return 0;
-  return Math.round(assigned.reduce((acc,[tid,did])=>{
+  const scores = [];
+  assigned.forEach(([tid,did]) => {
     const t = S.TASKS.find(x=>x.id===tid), d = S.DEVS.find(x=>x.id===did);
-    return acc + (t && d ? computeFit(t,d).score : 0); }, 0) / assigned.length);
+    if (!t || !d) return;
+    const f = computeFit(t, d);
+    if (f.fromAI && typeof f.score === 'number') scores.push(f.score);
+  });
+  return { avg: scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0,
+           scored: scores.length, total: assigned.length };
 }
+function avgFitScore(){ return fitStats().avg; }
 function statusTag(st){
   const map = { 'Approved':['#dcfce7','#15803d','✓ Coach đã phê duyệt'],
     'Needs Revision':['#fee2e2','#b91c1c','⚠ Yêu cầu phân công lại'],
@@ -1292,7 +1596,7 @@ function renderDetailHeader(){
 
 function renderMetricCards(){
   const ws = workloadShares();
-  const avg = avgFitScore();
+  const fs = fitStats();
   const mk = (icon, iconBg, iconFg, value, label, sub, subColor) => `<div class="card2" style="padding:18px;display:flex;gap:14px;align-items:center;">
     <div style="width:46px;height:46px;border-radius:13px;background:${iconBg};color:${iconFg};display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;">${icon}</div>
     <div style="min-width:0;">
@@ -1305,7 +1609,8 @@ function renderMetricCards(){
   return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
     ${mk('👥','#dbeafe','#1d4ed8', S.DEVS.length + ' Học viên','Số lượng thành viên nhóm','Hồ sơ dựng từ GitHub thật','#059669')}
     ${mk('📘','#e0e7ff','#4338ca', S.TASKS.length + ' Module', esc(S.PROJECT.name), S.LABS.length + ' bài lab tương ứng','#4f46e5')}
-    ${mk('📈','#fef3c7','#b45309', avgFitScore() + '%','Độ fit trung bình năng lực','★ ' + (avg>=90?'Rất cao':avg>=75?'Khá tốt':'Cần xem lại'),'#b45309')}
+    ${mk('📈','#fef3c7','#b45309', fs.avg + '%','Fit trung bình (chỉ cặp AI đã chấm)',
+        `${fs.scored}/${fs.total} cặp do AI chấm`,'#b45309')}
     ${mk('📊','#d1fae5','#047857', ws.balance + '%','Tỉ lệ cân bằng khối lượng', balLabel, balColor)}
   </div>`;
 }
@@ -1325,7 +1630,7 @@ function renderOverviewSplit(){
         <span style="display:inline-flex;align-items:center;gap:6px;background:${col.hex};color:#fff;font-size:11px;font-weight:800;padding:4px 11px;border-radius:16px;">👤 ${dev?esc(dev.name):'Chưa phân công'}</span>
         <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;font-weight:600;">
           <span>🕐 ${esc(t.time)}</span>
-          ${fit ? `<span style="${fitBadgeStyle(fit.score)}">Fit ${fit.score}%</span>` : ''}
+          ${fitChip(fit)}
         </div>
       </div>
       <div style="font-weight:800;font-size:13.5px;margin-top:9px;">${esc(t.name)}</div>
@@ -1333,7 +1638,7 @@ function renderOverviewSplit(){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;flex-wrap:wrap;">
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
           <span style="font-size:10.5px;font-weight:800;color:#64748b;margin-right:2px;">Kỹ năng:</span>
-          ${t.skills.map(s=>`<span style="background:#dbeafe;color:#1d4ed8;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:7px;">${esc(s)}</span>`).join('')}
+          ${t.skills.map(s=>`<span style="background:#dbeafe;color:#1d4ed8;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:7px;">${esc(skillLabel(s))}</span>`).join('')}
         </div>
         <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
       </div>
@@ -1657,12 +1962,18 @@ function render(){
     root.innerHTML = gateAnim(`<div style="min-height:100vh;">${renderNavbar()}${renderCoach()}${renderTicketDetailModal()}${renderTicketModal()}</div>`);
     return;
   }
-  if (S.stage === 'setup') { root.innerHTML = gateAnim(`<div>${renderNavbar()}${renderSetup()}</div>`); return; }
+  if (S.stage === 'setup') {
+    root.innerHTML = gateAnim(`<div>${renderNavbar()}${renderSetup()}${renderSkillPicker()}</div>`);
+    focusSkillSearch();
+    return;
+  }
   if (S.stage === 'analyzing') { root.innerHTML = gateAnim(renderAnalyzing()); return; }
   // Tab trên header chỉ còn dashboard / summary / graph.
   // developers và tickets vẫn vào được từ thẻ thành viên và nút Tickets ở đầu trang.
   const viewHtml = S.view === 'summary' ? renderSummaryTab()
     : S.view === 'graph' ? renderGraph()
+    : S.view === 'board' ? renderTaskBoard()
+    : S.view === 'claim' ? renderClaim()
     : S.view === 'developers' ? renderDevelopers()
     : S.view === 'tickets' ? renderTicketsTab()
     : renderDashboard();
@@ -1677,7 +1988,15 @@ function render(){
   const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
 }
 
+/* Chọn 1 tag là re-render cả trang -> ô tìm kiếm mất focus; trả lại con trỏ cuối chuỗi. */
+function focusSkillSearch(){
+  if (!S.skillPicker) return;
+  const el = document.getElementById('skill-search');
+  if (el && document.activeElement !== el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
 render();
+App.loadSkills();
 </script>
 </body>
 </html>

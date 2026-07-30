@@ -89,13 +89,18 @@ Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
 1. Màn đăng nhập → bấm **"Đăng nhập với vai trò Học viên"** (demo, không cần mật khẩu).
 2. **Bước 1**: dán link repo bài lab (đã điền sẵn repo mẫu Day04 của Team B2). Chỉ cần repo — AI tự đọc README và các file cần thiết.
 3. **Bước 2**: điền các thành viên — chỉ cần **tên + GitHub username** là đủ (đã điền sẵn 4 người Team B2 để thử, có thể xoá/sửa).
+   - Muốn khai thêm năng lực thì bấm **+ Chọn** ở ô *Kỹ năng đang có* / *Kỹ năng muốn học* rồi tick trong danh mục chuẩn của khoá (24 kỹ năng, lấy từ `seed/skills.json`). **Không gõ tay** — chọn tag để tránh cảnh "NextJS" và "Next.js" bị coi là hai kỹ năng khác nhau.
+   - Công nghệ ngoài danh mục (Unity, Rust…) thì điền ở ô **Công nghệ khác**.
 4. Bấm **"Đưa cho AI phân tích"** → chờ 1-2 phút (AI đọc GitHub thật + gọi OpenAI thật).
 5. Xem kết quả qua các tab:
-   - **Tổng quan** — ai làm phần nào (tô màu theo người), thanh % khối lượng, bảng "Dự án cần gì — ai có?".
+   - **Tổng quan** — mặc định hiện gọn: ai làm phần nào + thanh % khối lượng. Cần xem sâu thì bấm **"Xem chi tiết"** để mở mô tả việc, cảnh báo của AI và bảng "Dự án cần gì — ai có?".
+   - **Bảng việc** — kéo thẻ việc sang cột người khác để đổi người làm; bấm nhãn trạng thái để đổi *Chưa làm → Đang làm → Xong*. Dùng thay Jira cho nhóm nhỏ; thay đổi lưu cho cả nhóm và Lab Coach.
+   - **Việc của tôi** — chọn mình là ai ở góc phải, xem việc còn trống để nhận hoặc trả lại việc.
    - **Tóm tắt bài lab** — AI tóm tắt đề bài + mục tiêu, liệt kê file đã tự đọc.
-   - **Lập trình viên** — hồ sơ từng người: radar kỹ năng, số commit/PR thật, bằng chứng cho từng skill.
-   - **Matching** — kéo thả để tự chỉnh phân công; bấm vào thẻ xem AI giải thích vì sao.
+   - **Sơ đồ kỹ năng** — 2 chế độ: **Ma trận** (bảng người × kỹ năng, kèm 4 con số: bài lab cần bao nhiêu trục, bao nhiêu trục đã đủ người, trục nào chỉ 1 người gánh, trục nào chưa ai làm được) và **Sơ đồ luồng** (đồ thị người → kỹ năng → việc).
+   - Bấm vào thẻ thành viên ở Tổng quan để mở hồ sơ chi tiết: radar kỹ năng, số commit/PR thật, bằng chứng cho từng kỹ năng.
    - **🛟 Tickets** — bấm **Raise Ticket** khi kẹt, Lab Coach sẽ thấy và trả lời.
+   - **💬 Trợ lý AI** (nút tròn góc dưới phải) — nhớ được các lượt hỏi trước trong cùng phiên nên hỏi nối tiếp kiểu "còn người đó thì sao?" vẫn hiểu; bấm **Hội thoại mới** để xoá bộ nhớ. Trợ lý chỉ trả lời dựa trên dữ liệu đang hiển thị, không có dữ liệu thì nói thẳng là không có.
 
 ### 🛡️ Vai trò Lab Coach (người hướng dẫn)
 
@@ -111,7 +116,9 @@ Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
 python scripts/run_eval.py
 ```
 
-Chạy 24 câu thử (có tình huống bẫy: dữ liệu thiếu, câu mơ hồ, đòi xếp hạng người, đòi đáp án...) qua đúng AI của sản phẩm, in PASS/FAIL từng câu và ghi bảng vào `eval/results.md`. Chuẩn đạt của nhóm: **≥75% và AI không được bịa skill không có bằng chứng lần nào**.
+Chạy 26 câu thử (có tình huống bẫy: dữ liệu thiếu, câu mơ hồ, đòi xếp hạng người, đòi đáp án, tên kỹ năng viết lệch...) qua đúng AI của sản phẩm, in PASS/FAIL từng câu và ghi bảng vào `eval/results.md`. Chuẩn đạt của nhóm: **≥75% và AI không được bịa skill không có bằng chứng lần nào**.
+
+Chạy một câu lẻ (không tốn nhiều lượt gọi API): `python scripts/run_eval.py N01 N02 G01`.
 
 ---
 

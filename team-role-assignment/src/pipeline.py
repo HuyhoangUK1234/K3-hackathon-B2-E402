@@ -13,7 +13,8 @@ from .github_fetcher import fetch_developer
 from .llm import MODEL_FAST, MODEL_SMART, call_json
 from .repo_fetcher import fetch_extra_files, fetch_repo_context
 from .schemas import (GitHubData, RepoReadPlan, UIDevProfile, UIMatchResult,
-                      UIProjectAnalysis)
+                      UIProjectAnalysis, UISkill)
+from .skills import canon, canon_list, catalog, label, menu_for_prompt
 
 HUES = [285, 175, 230, 40, 330, 130, 20, 260]
 MAX_MEMBER_WORKERS = 6      # số thành viên phân tích song song
@@ -24,6 +25,13 @@ QUY TẮC CHỐNG BỊA (bắt buộc):
 - Mỗi skill PHẢI có evidence trỏ về dữ liệu cụ thể được cung cấp: tên repo, thống kê ngôn ngữ GitHub,
   commit message — hoặc ghi 'self-reported' nếu chỉ do người đó tự khai.
 - KHÔNG đưa vào skill không có trong dữ liệu.
+- skills[].name PHẢI là id lấy ĐÚNG trong "Danh mục kỹ năng chuẩn" bên dưới, không đặt tên mới.
+  Công nghệ cụ thể (React, FastAPI, Next.js...) quy về trục tương ứng và nhắc tên đó trong evidence.
+- CHỈ chọn một trục khi dữ liệu nêu ĐÍCH DANH ngôn ngữ/thư viện/việc thuộc trục đó.
+  Suy diễn bắc cầu là BỊA và bị cấm: biết Python KHÔNG suy ra backend-api hay data-handling;
+  có repo web KHÔNG suy ra database; commit nhiều KHÔNG suy ra debugging.
+- Công nghệ tự khai KHÔNG có trục tương ứng (VD: Java, Unity, Rust) thì GIỮ NGUYÊN tên gốc làm name
+  và ghi evidence 'self-reported' — không được bỏ đi, cũng không được ép sang trục gần đúng.
 - level (0-100): >=80 chỉ khi bằng chứng GitHub mạnh và nhất quán; skill self-reported đơn thuần tối đa 65.
 - Nếu GitHub gần như trống, dựa vào tự khai nhưng level thận trọng và summary nói rõ thiếu dữ liệu.
 - strengths, missing, learning_path, summary viết tiếng Việt; tên công nghệ giữ tiếng Anh.
@@ -35,11 +43,10 @@ QUY TẮC:
 - Chỉ kết luận từ dữ liệu được cung cấp (README, thư viện, cấu trúc source, backlog, roadmap). Không bịa công nghệ.
 - Thông tin mỏng -> confidence="low" + clarifying_questions (câu hỏi cho chủ dự án), KHÔNG đoán im lặng.
 - tasks: 4-8 đầu việc phủ vòng đời dự án, mô tả tiếng Việt, tên công nghệ tiếng Anh.
-- required_skills PHẢI là tên công nghệ/tool CỤ THỂ xuất hiện trong repo (VD: Python, Streamlit, OpenAI API,
-  Git, Markdown) — KHÔNG dùng danh mục chung chung kiểu "Frontend Development", "Testing", "Technical Writing".
-  Mỗi task 1-3 skill, chỉ skill thật sự cần.
-- Nếu được cung cấp danh sách "Kỹ năng nhóm đang có": khi một kỹ năng của nhóm dùng được cho task,
-  hãy dùng ĐÚNG tên đó (giữ nguyên chính tả) để hệ thống so khớp được.
+- required_skills PHẢI là id lấy ĐÚNG trong "Danh mục kỹ năng chuẩn" được cung cấp (VD: python, backend-api,
+  api-integration). TUYỆT ĐỐI không đặt tên mới, không viết tên framework (Next.js, Streamlit) vào đây —
+  framework thì chọn trục tương ứng (Next.js -> ui-frontend, FastAPI -> backend-api).
+  Mỗi task 1-3 id, chỉ kỹ năng thật sự cần. Công nghệ cụ thể của repo thì nhắc trong description.
 - summary: tóm tắt bài lab 2-4 câu tiếng Việt (đề bài yêu cầu gì, sản phẩm cuối là gì).
   objectives: 3-6 mục tiêu chính. Cả hai CHỈ lấy từ tài liệu được cung cấp — thiếu thì ghi ngắn và hạ confidence.
 - estimate_days thực tế cho team học viên 3-5 người."""
@@ -67,12 +74,11 @@ QUY TẮC:
   <50 không giao — đưa task vào unassigned_task_ids kèm warning.
 - Dùng đúng task_id và developer_id được cung cấp.
 - skill_coverage: BẮT BUỘC 1 dòng cho MỖI kỹ năng khác nhau trong required_skills của mọi task.
-  So khớp NGỮ NGHĨA chứ không chỉ trùng tên: JavaScript/HTML/CSS che được việc dựng UI web;
-  Python che được Streamlit ở mức "gần có"; Jupyter Notebook gợi ý quen data/eval.
-  QUY TẮC CỨNG: thư viện/framework của một ngôn ngữ mà nhóm đã mạnh ngôn ngữ đó
-  (VD: requests, PyYAML, Streamlit, OpenAI API với người mạnh Python; React với người mạnh JavaScript)
-  thì status ÍT NHẤT là "gần có" — covered_by ghi người mạnh ngôn ngữ nền. "thiếu" chỉ dành cho
-  kỹ năng không ai có nền tảng liên quan (VD: Kubernetes khi cả nhóm chỉ làm web frontend).
+  Trường "skill" ghi ĐÚNG id đã cho, không đổi tên.
+  Mỗi developer có "skillAxes" = mức thành thạo trên chính các trục đó — dùng nó để chấm.
+  QUY TẮC CỨNG: trục nền tảng gần kề đã mạnh thì status ÍT NHẤT là "gần có"
+  (python mạnh -> backend-api / data-handling / llm-app-dev gần có; ui-frontend mạnh -> presentation-demo;
+  api-integration mạnh -> llm-app-dev). "thiếu" chỉ dành cho trục không ai có nền tảng liên quan.
   - status "có": có người sở hữu đúng skill hoặc tương đương mạnh -> covered_by ghi tên + evidence.
   - status "gần có": có người có nền tảng liên quan, học nhanh được -> covered_by ghi tên + nền tảng, note gợi ý ai nên học.
   - status "thiếu": cả nhóm không có nền tảng liên quan -> note nói rõ rủi ro/cách xử lý.
@@ -147,13 +153,37 @@ def _rebalance(devs: list[dict], tasks: list[dict], assignments: dict, fit_matri
 def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
     """Flow 1 LLM step — same prompt the app uses; also called by eval."""
     payload = {"github_data": gh.model_dump(), "self_reported": self_reported}
-    return call_json(
+    prof = call_json(
         MODEL_FAST, UI_DEV_SYSTEM,
-        "Dữ liệu lập trình viên (GitHub thật + tự khai):\n"
+        "=== Danh mục kỹ năng chuẩn (name chỉ được lấy id ở đây) ===\n" + menu_for_prompt()
+        + "\n\nDữ liệu lập trình viên (GitHub thật + tự khai):\n"
         + json.dumps(payload, ensure_ascii=False)
         + "\n\nXây dựng hồ sơ UIDevProfile.",
         UIDevProfile,
     )
+    # LLM đôi khi vẫn trả 'Next.js' thay vì id -> quy về trục chuẩn ngay tại đây,
+    # gộp trùng bằng cách giữ mức cao nhất và nối evidence.
+    merged: dict[str, tuple[int, str]] = {}
+    for s in prof.skills:
+        sid = canon(s.name) or s.name.strip()
+        old = merged.get(sid)
+        if old is None:
+            merged[sid] = (s.level, s.evidence)
+        else:
+            ev = old[1] if s.evidence in old[1] else f"{old[1]}; {s.evidence}"
+            merged[sid] = (max(old[0], s.level), ev)
+    prof.skills = [UISkill(name=sid, level=lv, evidence=ev)
+                   for sid, (lv, ev) in merged.items()]
+
+    # Guardrail: người dùng tự khai gì thì phải còn nguyên trong hồ sơ. Model hay
+    # bỏ rơi kỹ năng không có trục tương ứng (VD 'Java'). Ghi vào là trung thực —
+    # đây là lời khai của chính họ, và evidence nói rõ chỉ là tự khai.
+    for raw in (self_reported.get("declared_skill_axes") or []):
+        sid = canon(raw) or str(raw).strip()
+        if sid and sid not in merged:
+            merged[sid] = (45, "self-reported (người dùng tự khai, chưa có dữ liệu GitHub)")
+            prof.skills.append(UISkill(name=sid, level=45, evidence=merged[sid][1]))
+    return prof
 
 
 def analyze_project_ui(proj_input: str) -> UIProjectAnalysis:
@@ -181,11 +211,18 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         gh = fetch_developer(username) if username else GitHubData(
             username="", error="Không nhập GitHub username")
         err = f"{m.get('name') or username}: {gh.error}" if gh.error else ""
+        # Người dùng chọn kỹ năng bằng tag (id chuẩn) thay vì gõ tay; ô "khác"
+        # vẫn nhận chữ tự do nên vẫn canon lại phòng khi họ gõ 'NextJS'.
+        declared = canon_list(m.get("skillIds") or [])
+        wants = canon_list(m.get("wantLearnIds") or [])
         profile = profile_developer(gh, {
             "name": m.get("name", ""),
-            "languages": m.get("languages", ""),
-            "frameworks": m.get("frameworks", ""),
-            "wants_to_learn": m.get("wantLearn", ""),
+            "declared_skill_axes": declared,
+            "declared_skill_labels": [label(s) for s in declared],
+            "wants_to_learn_axes": wants,
+            "wants_to_learn_labels": [label(s) for s in wants],
+            "other_tech_free_text": ", ".join(
+                x for x in [m.get("languages", ""), m.get("frameworks", "")] if x),
             "readiness_1_to_10": m.get("readiness", 5),
             "years_experience": m.get("experienceYears", 0),
         })
@@ -201,7 +238,9 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
             "readiness": m.get("readiness", 5),
             "languages": m.get("languages") or ", ".join(list(gh.languages)[:4]),
             "frameworks": m.get("frameworks", ""),
-            "wantLearn": m.get("wantLearn", ""),
+            "declaredSkills": declared,
+            "wantLearnIds": wants,
+            "wantLearn": ", ".join(label(s) for s in wants) or m.get("wantLearn", ""),
             "githubStats": {"commits": gh.commit_count, "prs": gh.pr_count,
                             "issues": gh.issue_count},
             "strengths": profile.strengths,
@@ -272,15 +311,20 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         + "\n=== Roadmap ===\n" + (setup.get("roadmap") or "(không có)")
         + ("\n\n=== Tài liệu bổ sung AI tự đọc từ repo ===" + extra_docs if extra_docs else "")
     )
-    team_skills = sorted({sk for d in devs for sk in d["skills"]})
-    if team_skills:
-        proj_input += "\n\n=== Kỹ năng nhóm đang có (dùng đúng tên này khi khớp) ===\n" + ", ".join(team_skills)
+    proj_input += ("\n\n=== Danh mục kỹ năng chuẩn (required_skills chỉ được lấy id ở đây) ===\n"
+                   + menu_for_prompt())
+    team_axes = sorted({sk for d in devs for sk in d["skills"]})
+    if team_axes:
+        proj_input += "\n\n=== Trục kỹ năng nhóm đang có ===\n" + ", ".join(team_axes)
     proj = analyze_project_ui(proj_input)
 
     tasks = []
     labs = []
     for i, t in enumerate(proj.tasks):
         tid = f"t{i+1}"
+        # Quy về trục chuẩn: 'Next.js' và 'NextJS' cùng ra 'ui-frontend' nên
+        # bảng coverage và sơ đồ kỹ năng không còn báo thiếu vì lệch chính tả.
+        t.required_skills = canon_list(t.required_skills)
         tasks.append({
             "id": tid, "name": t.name, "skills": t.required_skills,
             "difficulty": DIFF_VI[t.difficulty], "time": _time_label(t.estimate_days),
@@ -318,7 +362,7 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         "developers": [{
             "id": d["id"], "name": d["name"], "roleSuited": d["roleSuited"],
             "experienceYears": d["experienceYears"], "readiness": d["readiness"],
-            "wantLearn": d["wantLearn"], "skills": d["skills"],
+            "wantLearn": d["wantLearn"], "skillAxes": d["skills"],
             "skillEvidence": d["skillEvidence"], "githubStats": d["githubStats"],
             "strengths": d["strengths"],
         } for d in devs],
@@ -344,19 +388,41 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
     # the most loaded dev.
     rebalance_notes = _rebalance(devs, tasks, assignments, fit_matrix)
 
+    coverage_rows = []
+    for c in mr.skill_coverage:
+        row = c.model_dump()
+        row["skill"] = canon(row["skill"]) or row["skill"]
+        coverage_rows.append(row)
+
     return {
         "devs": devs, "project": project, "tasks": tasks, "labs": labs,
         "fitMatrix": fit_matrix, "assignments": assignments,
         "warnings": mr.warnings + gh_errors + rebalance_notes,
         "workloadNotes": mr.workload_notes,
         "unassignedTaskIds": [t for t in mr.unassigned_task_ids if t in valid_task],
-        "skillCoverage": [c.model_dump() for c in mr.skill_coverage],
+        "skillCoverage": coverage_rows,
+        # Nhãn tiếng Việt cho từng trục — UI hiển thị label, dữ liệu vẫn là id.
+        "skillCatalog": {sid: meta["label"] for sid, meta in catalog().items()},
     }
 
 
-def chat_reply(message: str, state_summary: str) -> str:
-    """Grounded chat about the current assignment state."""
+MAX_CHAT_TURNS = 8      # 8 lượt gần nhất là đủ để hiểu "còn người đó thì sao?" mà prompt không phình
+
+
+def chat_reply(message: str, state_summary: str, history: list[dict] | None = None) -> str:
+    """Grounded chat about the current assignment state.
+
+    history: [{"role": "user"|"assistant", "content": str}] — các lượt TRƯỚC câu hỏi này.
+    Không có history thì mỗi câu hỏi là một cuộc hội thoại rời rạc: hỏi "còn Tâm thì sao?"
+    ngay sau đó model không biết "còn" là còn gì.
+    """
     from .llm import client
+    turns = []
+    for h in (history or [])[-MAX_CHAT_TURNS * 2:]:
+        role = "assistant" if h.get("role") in ("assistant", "ai") else "user"
+        content = str(h.get("content") or "").strip()[:1500]
+        if content:
+            turns.append({"role": role, "content": content})
     resp = client().chat.completions.create(
         model=MODEL_FAST,
         temperature=0.3,
@@ -366,8 +432,11 @@ def chat_reply(message: str, state_summary: str) -> str:
                 "Bạn là trợ lý AI trong app phân công vai trò team (RoleFit AI). "
                 "Trả lời NGẮN GỌN (tối đa 3-4 câu) bằng tiếng Việt, CHỈ dựa trên dữ liệu trạng thái được cung cấp. "
                 "Không biết thì nói không có dữ liệu — không đoán. "
-                "Không xếp hạng 'ai giỏi hơn ai' — chỉ nói về mức phù hợp người-việc.\n\n"
+                "Không xếp hạng 'ai giỏi hơn ai' — chỉ nói về mức phù hợp người-việc. "
+                "Có lịch sử hội thoại thì hiểu câu hỏi nối tiếp (đại từ 'người đó', 'việc đó'), "
+                "nhưng dữ kiện vẫn phải lấy từ trạng thái bên dưới, không lấy từ câu mình đã nói trước.\n\n"
                 "=== Trạng thái hiện tại ===\n" + state_summary},
+            *turns,
             {"role": "user", "content": message},
         ],
     )
