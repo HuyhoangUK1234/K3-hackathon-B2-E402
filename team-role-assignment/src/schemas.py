@@ -136,6 +136,38 @@ class SkillCoverage(BaseModel):
     note: str = Field(default="", description="1 short sentence: why/how, or who should learn it, Vietnamese")
 
 
+# ---------- Vector năng lực (skill graph) ----------
+
+class SkillSignal(BaseModel):
+    """Một kỹ năng học viên thể hiện trong MỘT lab, kèm loại bằng chứng."""
+    skill: str = Field(description="PHẢI là id có trong skills.json, không được đặt tên mới")
+    strength: float = Field(ge=0, le=1, description="Mức thể hiện trong lab này, 0-1")
+    evidence_type: Literal["commit", "report", "group_report", "none"] = Field(
+        description="Nguồn mạnh nhất chứng minh kỹ năng này")
+    evidence: str = Field(description="Trích dẫn ngắn từ commit/report, tiếng Việt")
+
+
+class StudentLabSignals(BaseModel):
+    signals: list[SkillSignal] = Field(description="Chỉ kỹ năng CÓ bằng chứng trong lab này")
+    blocked_skills: list[str] = Field(
+        default=[], description="skill id mà blockers cho thấy người này còn vướng")
+    interest_skills: list[str] = Field(
+        default=[], description="skill id mà intentions cho thấy người này muốn học")
+    summary: str = Field(description="2-3 câu tiếng Việt về việc người này làm trong lab")
+
+
+class LabRequirement(BaseModel):
+    skill: str = Field(description="PHẢI là id có trong skills.json")
+    weight: float = Field(ge=0, le=1, description="1.0 = lab dạy/đòi trực tiếp; 0.3 = chỉ chạm qua")
+    reason: str = Field(description="1 câu, trích từ tài liệu lab, tiếng Việt")
+
+
+class LabRequirements(BaseModel):
+    requirements: list[LabRequirement] = Field(description="4-12 kỹ năng lab thực sự cần")
+    summary: str = Field(description="2-3 câu tiếng Việt tóm tắt lab này yêu cầu gì")
+    confidence: Literal["low", "medium", "high"]
+
+
 class UIMatchResult(BaseModel):
     assignments: list[UIAssignment]
     unassigned_task_ids: list[str] = []

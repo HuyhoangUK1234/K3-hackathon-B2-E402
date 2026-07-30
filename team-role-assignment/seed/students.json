@@ -1,5 +1,39 @@
 [
     {
+        "id": 1,
+        "name": "Huynh Hoang Viet",
+        "MSSV": "2A202601105",
+        "github": "https://github.com/HuyhoangUK1234",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/HuyhoangUK1234/Day01-2A202601105-HuynhHoangViet",
+                "report": [],
+                "group_report": [],
+                "blockers": [],
+                "intentions": []
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/HuyhoangUK1234/Day02-2A202601105-HuynhHoangViet",
+                "report": [
+                    "https://github.com/HuyhoangUK1234/Day02-2A202601105-HuynhHoangViet/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/HuyhoangUK1234/Day02-2A202601105-HuynhHoangViet/blob/main/03-individual-reflection/reflection.md"
+                ],
+                "group_report": [
+                    "https://github.com/HuyhoangUK1234/Day02-2A202601105-HuynhHoangViet/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    
+                ],
+                "intentions": [
+                    
+                ]
+            }
+        ]
+    }
+    ,
+    {
         "id": 2,
         "name": "Nguyen Van Tien",
         "MSSV": "2A202601433",

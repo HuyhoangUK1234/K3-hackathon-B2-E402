@@ -235,3 +235,70 @@ def chat(req: ChatRequest):
         return {"reply": chat_reply(req.message, req.state_summary)}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ---------------- Skill graph (seed/.cache) ----------------
+
+class CoverageRequest(BaseModel):
+    mssv: list[str]
+    lab: str
+
+
+class TeamSuggestRequest(BaseModel):
+    lab: str
+    team_size: int = 5
+    top_n: int = 5
+    partition: bool = False        # True = chia cả cohort thành nhiều nhóm
+
+
+def _graph_call(fn, *a, **kw):
+    """Cache chưa dựng -> 409 kèm câu lệnh cần chạy; lỗi seed -> 400."""
+    from src.graph_api import GraphNotBuilt
+    from src.seed_loader import SeedError
+    try:
+        return fn(*a, **kw)
+    except GraphNotBuilt as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
+    except SeedError as e:
+        return JSONResponse(status_code=400, content={"error": f"Seed sai: {e}"})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/graph/labs")
+def graph_labs():
+    from src.graph_api import list_labs
+    return _graph_call(list_labs)
+
+
+@app.get("/api/graph/students")
+def graph_students():
+    from src.graph_api import list_students
+    return _graph_call(list_students)
+
+
+@app.get("/api/graph/students/{mssv}")
+def graph_student(mssv: str):
+    from src.graph_api import student_detail
+    return _graph_call(student_detail, mssv)
+
+
+@app.get("/api/graph/labs/{lab_name}")
+def graph_lab(lab_name: str):
+    from src.graph_api import load_lab
+    return _graph_call(load_lab, lab_name)
+
+
+@app.post("/api/graph/coverage")
+def graph_coverage(req: CoverageRequest):
+    """Nhập nhóm MSSV -> nhóm này phủ bao nhiêu % yêu cầu lab."""
+    from src.graph_api import team_coverage
+    return _graph_call(team_coverage, req.mssv, req.lab)
+
+
+@app.post("/api/graph/suggest-teams")
+def graph_suggest_teams(req: TeamSuggestRequest):
+    """Duyệt tổ hợp cohort -> nhóm phủ tốt nhất cho lab."""
+    from src.graph_api import suggest_teams
+    return _graph_call(suggest_teams, req.lab, req.team_size, req.top_n, req.partition)

@@ -1,0 +1,100 @@
+{
+    "_note": "Trục cố định của mọi vector năng lực. LLM CHỈ được chọn id trong file này, không được tự đặt tên mới. Thêm trục = thêm key ở đây; người cũ tự động có 0 trên trục mới.",
+
+    "env-setup": {
+        "label": "Setup môi trường",
+        "description": "Cài Python/venv, quản lý dependency, chạy được project trên máy"
+    },
+    "python": {
+        "label": "Python",
+        "description": "Cú pháp, hàm, module, xử lý lỗi bằng Python"
+    },
+    "git-github": {
+        "label": "Git & GitHub",
+        "description": "Commit, push, branch, PR, tổ chức repo"
+    },
+    "debugging": {
+        "label": "Debug",
+        "description": "Đọc traceback, khoanh vùng lỗi, sửa lỗi có phương pháp"
+    },
+    "api-integration": {
+        "label": "Tích hợp API",
+        "description": "Gọi REST API, quản lý API key, xử lý response và lỗi mạng"
+    },
+    "prompt-engineering": {
+        "label": "Prompt engineering",
+        "description": "Viết prompt, ràng buộc output, tinh chỉnh khi kết quả sai"
+    },
+    "llm-app-dev": {
+        "label": "Xây app dùng LLM",
+        "description": "Ghép LLM vào ứng dụng: schema output, retry, xử lý lỗi model"
+    },
+    "ai-agent-design": {
+        "label": "Thiết kế AI agent",
+        "description": "Agent tự quyết định bước tiếp theo, dùng tool, nhiều bước"
+    },
+    "rag-retrieval": {
+        "label": "RAG & truy hồi",
+        "description": "Chia nhỏ tài liệu, tìm kiếm ngữ nghĩa, đưa ngữ cảnh vào prompt"
+    },
+    "problem-framing": {
+        "label": "Xác định vấn đề",
+        "description": "Khoanh vùng bài toán, phân biệt triệu chứng và nguyên nhân, chốt phạm vi"
+    },
+    "business-analysis": {
+        "label": "Phân tích nghiệp vụ",
+        "description": "Phân tích nhu cầu người dùng, giá trị mang lại, ràng buộc thực tế"
+    },
+    "user-research": {
+        "label": "Nghiên cứu người dùng",
+        "description": "Phỏng vấn, khảo sát, tổng hợp bằng chứng từ người dùng thật"
+    },
+    "data-handling": {
+        "label": "Xử lý dữ liệu",
+        "description": "Đọc/làm sạch/biến đổi CSV, JSON, text"
+    },
+    "data-analysis": {
+        "label": "Phân tích dữ liệu",
+        "description": "Thống kê, tìm quy luật, rút kết luận từ số liệu"
+    },
+    "notebook-jupyter": {
+        "label": "Jupyter Notebook",
+        "description": "Làm việc trong notebook, trình bày phân tích theo cell"
+    },
+    "backend-api": {
+        "label": "Backend & API server",
+        "description": "Dựng server, thiết kế endpoint, xử lý request"
+    },
+    "ui-frontend": {
+        "label": "Giao diện web",
+        "description": "HTML/CSS/JS, dựng UI người dùng bấm được"
+    },
+    "database": {
+        "label": "Cơ sở dữ liệu",
+        "description": "Thiết kế bảng, truy vấn, lưu trữ bền vững"
+    },
+    "testing-eval": {
+        "label": "Kiểm thử & đo lường",
+        "description": "Viết test, dựng bộ câu thử, đo chất lượng output"
+    },
+    "devops-deploy": {
+        "label": "Triển khai",
+        "description": "Đưa sản phẩm lên môi trường chạy thật, cấu hình, biến môi trường"
+    },
+    "documentation": {
+        "label": "Viết tài liệu",
+        "description": "README, report, hướng dẫn chạy — rõ ràng, đủ để người khác làm theo"
+    },
+    "project-planning": {
+        "label": "Lập kế hoạch",
+        "description": "Chia đầu việc, ước lượng, sắp thứ tự ưu tiên, theo dõi tiến độ"
+    },
+    "teamwork-sync": {
+        "label": "Phối hợp nhóm",
+        "description": "Chia việc, đồng bộ tiến độ, xử lý phụ thuộc giữa các thành viên"
+    },
+    "presentation-demo": {
+        "label": "Trình bày & demo",
+        "description": "Kể câu chuyện sản phẩm, demo chạy thật, trả lời phản biện"
+    }
+}

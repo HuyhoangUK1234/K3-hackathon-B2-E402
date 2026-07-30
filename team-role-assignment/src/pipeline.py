@@ -7,6 +7,7 @@ never from the LLM.
 """
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from .github_fetcher import fetch_developer
 from .llm import MODEL_FAST, MODEL_SMART, call_json
@@ -15,6 +16,7 @@ from .schemas import (GitHubData, RepoReadPlan, UIDevProfile, UIMatchResult,
                       UIProjectAnalysis)
 
 HUES = [285, 175, 230, 40, 330, 130, 20, 260]
+MAX_MEMBER_WORKERS = 6      # số thành viên phân tích song song
 
 UI_DEV_SYSTEM = """Bạn là chuyên gia đánh giá năng lực lập trình viên để phân công vai trò trong team.
 
@@ -162,21 +164,23 @@ def analyze_project_ui(proj_input: str) -> UIProjectAnalysis:
 
 def match_ui(match_payload: dict) -> UIMatchResult:
     """Flow 3 LLM step — same prompt the app uses; also called by eval."""
+    # skill_coverage bắt 1 dòng mỗi skill nên output phình theo số task -> chặn trần.
     return call_json(MODEL_SMART, UI_MATCH_SYSTEM,
                      "Dữ liệu team và task:\n" + json.dumps(match_payload, ensure_ascii=False)
-                     + "\n\nPhân công và trả về UIMatchResult.", UIMatchResult, temperature=0.3)
+                     + "\n\nPhân công và trả về UIMatchResult.", UIMatchResult,
+                     temperature=0.3, max_tokens=2000)
 
 
 def analyze_all(setup: dict, members: list[dict]) -> dict:
     """Run the 3 flows and assemble the UI payload. Raises on LLM/config errors."""
     # ---- Flow 1: per-member GitHub fetch + LLM profile ----
-    devs = []
-    gh_errors = []
-    for i, m in enumerate(members):
+    # Các thành viên độc lập nhau -> chạy song song. Tuần tự thì thời gian cộng dồn
+    # theo số người (đo được ~12.5s/người); song song thì bằng người chậm nhất.
+    def _one_member(i: int, m: dict) -> tuple[dict, str]:
         username = (m.get("github") or "").strip()
-        gh = fetch_developer(username) if username else GitHubData(username="", error="Không nhập GitHub username")
-        if gh.error:
-            gh_errors.append(f"{m.get('name') or username}: {gh.error}")
+        gh = fetch_developer(username) if username else GitHubData(
+            username="", error="Không nhập GitHub username")
+        err = f"{m.get('name') or username}: {gh.error}" if gh.error else ""
         profile = profile_developer(gh, {
             "name": m.get("name", ""),
             "languages": m.get("languages", ""),
@@ -186,7 +190,7 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
             "years_experience": m.get("experienceYears", 0),
         })
         name = m.get("name") or gh.display_name or username or f"Thành viên {i+1}"
-        devs.append({
+        return {
             "id": f"d{i+1}",
             "name": name,
             "initials": _initials(name),
@@ -198,14 +202,20 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
             "languages": m.get("languages") or ", ".join(list(gh.languages)[:4]),
             "frameworks": m.get("frameworks", ""),
             "wantLearn": m.get("wantLearn", ""),
-            "githubStats": {"commits": gh.commit_count, "prs": gh.pr_count, "issues": gh.issue_count},
+            "githubStats": {"commits": gh.commit_count, "prs": gh.pr_count,
+                            "issues": gh.issue_count},
             "strengths": profile.strengths,
             "missing": profile.missing,
             "learningPath": profile.learning_path,
             "summary": profile.summary,
             "skills": {s.name: s.level for s in profile.skills},
             "skillEvidence": {s.name: s.evidence for s in profile.skills},
-        })
+        }, err
+
+    with ThreadPoolExecutor(max_workers=min(MAX_MEMBER_WORKERS, len(members))) as pool:
+        results = list(pool.map(lambda a: _one_member(*a), enumerate(members)))
+    devs = [r[0] for r in results]           # giữ đúng thứ tự người dùng nhập
+    gh_errors = [r[1] for r in results if r[1]]
 
     # ---- Flow 2: project analysis ----
     # Agent step: user gave only a repo URL -> read README + tree ourselves,

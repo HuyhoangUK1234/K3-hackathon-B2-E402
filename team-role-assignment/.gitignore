@@ -3,3 +3,7 @@
 __pycache__/
 *.pyc
 data/
+
+# seed chứa MSSV + tên thật + GitHub thật của học viên
+seed/students.json
+seed/.cache/
