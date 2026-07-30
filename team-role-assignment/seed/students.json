@@ -1,41 +1,113 @@
 [
+    {
+        "id": 1,
+        "name": "hoang viet",
+        "MSSV": "2A2026",
+        "github": "link github",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "",
+                "report": [],
+                "group_report": [],
+                "blockers": ["what make me hard in this lab"],
+                "intentions": ["what i want to do in the next lab"]
+            },
+            {
+                "name": "lab2",
+                "repo_url": "",
+                "report": [],
+                "group_report": [],
+                "blockers": ["what make me hard in this lab"],
+                "intentions": ["what i want to do in the next lab"]
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "name": "Nguyen Van Tien",
+        "MSSV": "2A202601433",
+        "github": "https://github.com/VanTienDL",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/VanTienDL/DAY01_2A202601433_NguyenVanTien",
+                "report": [],
+                "group_report": [],
+                "blockers": [
+                    "Chưa hiểu API Key",
+                    "Chưa làm quen được lab setup"
+                ],
+                "intentions": []
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien",
+                "report": [
+                    "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/03-individual-reflection/reflection.md"
+                ],
+                "group_report": [
+                    "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    "Chưa tốt về khoản BA"
+                ],
+                "intentions": [
+                    "Muốn tìm hiểu sâu hơn về BA"
+                ]
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "name": "Nguyen Le Duy Hung",
+        "MSSV": "2A202601533",
+        "github": "https://github.com/duyhung-2k4/DAY01_2A202601135_NguyenLeDuyHung",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/duyhung-2k4/DAY01_2A202601135_NguyenLeDuyHung",
+                "report": [],
+                "group_report": [],
+                "blockers": [
+                    "Chưa hiểu API Key",
+                    "Chưa làm quen được lab setup"
+                ],
+                "intentions": []
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/duyhung-2k4/DAY02_2A202601135_NguyenLeDuyHung",
+                "report": [
+                    "https://github.com/duyhung-2k4/DAY02_2A202601433_NguyenVanTien/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/duyhung-2k4/DAY02_2A202601433_NguyenVanTien/blob/main/03-individual-reflection/reflection.md"
+                ],
+                "group_report": [
+                    "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    "Chưa tốt về khoản BA"
+                ],
+                "intentions": [
+                    "Muốn tìm hiểu sâu hơn về BA"
+                ]
+            }
+        ]
+    },
   {
-    "id": 1,
-    "name": "hoang viet",
-    "MSSV": "2A2026",
-    "github": "link github",
-    "labs": [
-      {
-        "name": "lab1",
-        "repoURL": "abc",
-        "report": ["link my report markdown here"],
-        "group-report": [],
-        "blocker": ["what make me hard in this lab"],
-        "intension": ["what i want to do in the next lab"]
-      },
-      {
-        "name": "lab2",
-        "repoURL": "abc",
-        "report": ["markdown here"],
-        "group-report": ["link group report markdown here"],
-        "blocker": ["what make me hard in this lab"],
-        "intension": ["what i want to do in the next lab"]
-      }
-    ]
-  },
-  {
-    "id": 2,
+    "id": 4,
     "name": "Ta Thi Nga",
     "MSSV": "2A202601125",
     "github": "https://github.com/ngatt-17",
     "labs": [
       {
         "name": "lab1",
-        "repoURL": "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga",
+        "repo_url": "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga",
         "report": [
           "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga#readme"
         ],
-        "group-report": [],
+        "group_report": [],
         "blocker": [
           "Không gặp khó khăn lớn; cần ôn lại một vài khái niệm Python cơ bản"
         ],
@@ -45,11 +117,11 @@
       },
       {
         "name": "lab2",
-        "repoURL": "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga",
+        "repo_url": "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga",
         "report": [
           "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga#readme"
         ],
-        "group-report": [
+        "group_report": [
           "https://github.com/ngatt-17/Day04_2A202601125_TaThiNga_TeamB2"
         ],
         "blocker": [
@@ -61,11 +133,11 @@
       },
       {
         "name": "lab3",
-        "repoURL": "https://github.com/ngatt-17/Day03_2A202601125_TaThiNga",
+        "repo_url": "https://github.com/ngatt-17/Day03_2A202601125_TaThiNga",
         "report": [
           "https://github.com/ngatt-17/Day03_2A202601125_TaThiNga#readme"
         ],
-        "group-report": [],
+        "group_report": [],
         "blocker": [
           "Một vài đoạn mã cần debug thêm và hiểu rõ hơn về yêu cầu bài toán"
         ],
@@ -75,11 +147,11 @@
       },
       {
         "name": "lab4",
-        "repoURL": "https://github.com/ngatt-17/day04_2A202601125_TaThiNga_prompt-engineering-tool-calling",
+        "repo_url": "https://github.com/ngatt-17/day04_2A202601125_TaThiNga_prompt-engineering-tool-calling",
         "report": [
           "https://github.com/ngatt-17/day04_2A202601125_TaThiNga_prompt-engineering-tool-calling#readme"
         ],
-        "group-report": [
+        "group_report": [
           "https://github.com/ngatt-17/Day04_2A202601125_TaThiNga_TeamB2"
         ],
         "blocker": [
@@ -92,3 +164,4 @@
     ]
   }
 ]
+

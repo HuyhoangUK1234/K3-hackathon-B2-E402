@@ -1,8 +1,5 @@
 # AI SPEC — Phân công vai trò team từ GitHub activity · Nhóm [XX] · Zone [X]
-Hướng: [x] C — Làn mở
-Loại: [x] Tính năng mới
-
-> ⚠️ NHÁP — các mục đánh dấu `[TODO-EVIDENCE]` bắt buộc điền bằng khảo sát/mining thật trước 23:59 N1.
+ Tính năng mới
 
 ## §1. User & Job
 - Job executor + workflow: Trưởng nhóm dự án học viên (team 3-5 người làm project cuối khoá) — nhận đề → hiểu yêu cầu → chia việc → theo dõi tiến độ.
@@ -10,10 +7,10 @@ Loại: [x] Tính năng mới
 - Problem statement (KHÔNG chữ AI): Trưởng nhóm không biết năng lực thật của thành viên mới (chỉ biết qua tự giới thiệu), dẫn đến phân công sai, việc dồn về 1-2 người mạnh, thành viên yếu không học được gì, dự án trễ.
 - Evidence:
   - Khảo sát 45 học viên trong khoá học làm bài khảo sát "Khảo sát nhu cầu về ứng dụng AI trong phân chia công việc nhóm ".
-  - [TODO-EVIDENCE] ≥5 quote nguyên văn từ khảo sát / Discord về pain phân công nhóm.
+  -  quote nguyên văn từ khảo sát / Discord về pain phân công nhóm.
 
 ## §2. Impact & quyết định chọn
-- Bảng impact ≥3 ứng viên: [TODO-EVIDENCE — điền sau khảo sát]
+- Bảng impact ≥3 ứng viên:
   
  | Ứng viên | Bao nhiêu người | Tần suất | Tốn gì mỗi lần | Khả thi |
 |---|---:|---|---|---|
