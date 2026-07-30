@@ -2,15 +2,20 @@
  Tính năng mới
 
 ## §1. User & Job
-- Job executor + workflow: Trưởng nhóm dự án học viên (team 3-5 người làm project cuối khoá) — nhận đề → hiểu yêu cầu → chia việc → theo dõi tiến độ.
-- Core JTBD (không tên sản phẩm/AI): "Khi team mới nhận dự án, tôi muốn biết ai nên làm phần nào để không mất mấy ngày đầu tranh luận và không giao nhầm việc cho người không làm nổi."
-- Problem statement (KHÔNG chữ AI): Trưởng nhóm không biết năng lực thật của thành viên mới (chỉ biết qua tự giới thiệu), dẫn đến phân công sai, việc dồn về 1-2 người mạnh, thành viên yếu không học được gì, dự án trễ.
+- Job executor + workflow: Trưởng nhóm dự án học viên (team 3-5 người làm lab mỗi ngày) — nhận đề → hiểu yêu cầu → chia việc → theo dõi tiến độ.
+- Core JTBD: "Khi team mới nhận dự án, tôi muốn biết ai nên làm phần nào để không mất mấy ngày đầu tranh luận và không giao nhầm việc cho người không làm nổi."
+- Problem statement: Trưởng nhóm không biết năng lực thật của thành viên mới (chỉ biết qua tự giới thiệu), dẫn đến phân công sai, việc dồn về 1-2 người mạnh, thành viên yếu không học được gì, dự án trễ.
 - Evidence:
   - Khảo sát 45 học viên trong khoá học làm bài khảo sát "Khảo sát nhu cầu về ứng dụng AI trong phân chia công việc nhóm ".
-  -  quote nguyên văn từ khảo sát / Discord về pain phân công nhóm.
+  -  quote nguyên văn từ khảo sát / Discord về pain phân công nhóm:
+     "Team Leader thường phân công dựa trên những gì họ biết về từng người, nên đôi khi chưa đúng với năng lực thực tế."
+     "Mình từng được giao task không đúng chuyên môn nên mất khá nhiều thời gian để tìm hiểu, ảnh hưởng đến tiến độ."
+     "Khi có thành viên mới, rất khó biết ai phù hợp với từng công việc vì không có dữ liệu đánh giá khách quan."
+     "README và tài liệu dự án khá dài, việc hiểu toàn bộ dự án rồi chia task hợp lý tốn rất nhiều thời gian."
+     "Nhiều khi leader chỉ phân công theo những gì tôi làm tốt nên tôi không có không gian học hỏi những thứ mới"
 
 ## §2. Impact & quyết định chọn
-- Bảng impact ≥3 ứng viên:
+- Bảng impact:
   
  | Ứng viên | Bao nhiêu người | Tần suất | Tốn gì mỗi lần | Khả thi |
 |---|---:|---|---|---|
@@ -24,7 +29,7 @@
 
 - Ứng viên CHỌN: **Chọn:** Khó phân công vai trò trong team.
 **Lý do:**
-- 35/45 người khảo sát cho rằng việc phân công chưa tối ưu ảnh hưởng đến tiến độ dự án.
+- 41/45 người khảo sát cho rằng việc phân công chưa tối ưu ảnh hưởng đến tiến độ dự án.
 - 36/45 người từng được giao công việc chưa phù hợp với năng lực.
 - 29/45 người cho biết Team Leader chủ yếu phân công dựa trên kinh nghiệm cá nhân thay vì dữ liệu.
 - Pain point này xuất hiện ở hầu hết các dự án và là nguyên nhân gốc dẫn đến các vấn đề như chia task không hợp lý và chậm tiến độ.
