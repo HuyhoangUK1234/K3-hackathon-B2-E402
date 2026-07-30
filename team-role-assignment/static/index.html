@@ -13,9 +13,15 @@
   .modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;}
   .modal-box{background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 24px 60px rgba(15,23,42,.25);}
   .seg-bar{display:flex;height:34px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;}
-  .seg-bar>div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;transition:all .2s;cursor:pointer;}
+  .seg-bar>div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;transition:opacity .15s, transform .15s;cursor:pointer;}
   .seg-bar>div.dim{opacity:.45;}
-  .task-card{border-radius:14px;transition:all .15s;cursor:pointer;}
+  .seg-bar>div.hl{transform:scaleY(1.12);}
+  .task-card{border-radius:14px;transition:border-color .15s, background .15s, box-shadow .15s;cursor:pointer;border:1px solid #e2e8f0;border-left:6px solid var(--mc,#94a3b8);background:#fff;}
+  .task-card.hl{border-color:var(--mc,#2563eb);border-left-color:var(--mc,#2563eb);background:var(--mbg,#f8fafc);box-shadow:0 4px 14px rgba(15,23,42,.08);}
+  .member-card{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:13px;cursor:pointer;transition:border-color .15s, background .15s, box-shadow .15s;}
+  .member-card.hl{border-color:var(--mc,#2563eb);background:var(--mbg,#f8fafc);box-shadow:0 4px 12px rgba(15,23,42,.08);}
+  .legend-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:10px;font-size:11.5px;font-weight:700;cursor:pointer;transition:box-shadow .15s;}
+  .legend-pill.hl{box-shadow:0 0 0 2px var(--mbd,#cbd5e1);}
   @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
   .fadeIn{animation:fadeIn .3s ease;}
   * { box-sizing: border-box; }
@@ -424,10 +430,10 @@ const App = {
     } catch(e) {}
   },
 
-  /* ---- hover sync (task cards <-> workload bar) ---- */
-  hoverDev(id){ S.hoverDevId = id; S.hoverTaskId = null; render(); },
-  hoverTask(taskId, devId){ S.hoverTaskId = taskId; S.hoverDevId = devId || null; render(); },
-  hoverClear(){ S.hoverDevId = null; S.hoverTaskId = null; render(); },
+  /* ---- hover sync (task cards <-> workload bar) — DOM trực tiếp, KHÔNG re-render để khỏi giật ---- */
+  hoverDev(id){ S.hoverDevId = id; S.hoverTaskId = null; applyHover(); },
+  hoverTask(taskId, devId){ S.hoverTaskId = taskId; S.hoverDevId = devId || null; applyHover(); },
+  hoverClear(){ S.hoverDevId = null; S.hoverTaskId = null; applyHover(); },
   setTicketFilter(v){ S.ticketFilter = v; render(); },
   setCoachTab(v){ S.page = v; render(); },
   setSetup(field, v){ S.setup[field] = v; },
@@ -1288,6 +1294,16 @@ function renderChat(){
 }
 
 /* ================= New UI: login / navbar / overview / summary / tickets / coach ================= */
+function applyHover(){
+  const dev = S.hoverDevId, task = S.hoverTaskId;
+  document.querySelectorAll('[data-hv]').forEach(el => {
+    const match = (dev && el.getAttribute('data-dev') === dev)
+               || (task && el.getAttribute('data-task') === task);
+    el.classList.toggle('hl', !!match);
+    if (el.parentElement && el.parentElement.classList.contains('seg-bar'))
+      el.classList.toggle('dim', !!dev && !match);
+  });
+}
 function workloadShares(){
   const per = {}; S.DEVS.forEach(d => per[d.id] = 0);
   let total = 0;
@@ -1436,15 +1452,15 @@ function renderMetricCards(){
 
 function renderOverviewSplit(){
   const ws = workloadShares();
-  // LEFT: task cards colored by assigned member
+  // LEFT: task cards colored by assigned member (highlight qua class .hl, không re-render)
   const taskCards = S.TASKS.map(t => {
     const dev = S.DEVS.find(d => d.id === S.assignments[t.id]);
     const col = dev ? devColor(dev) : {hex:'#94a3b8', bg:'#f8fafc', border:'#e2e8f0'};
-    const hl = S.hoverTaskId === t.id || (dev && S.hoverDevId === dev.id);
     const fit = dev ? computeFit(t, dev) : null;
     const lab = S.LABS.find(l => l.id === t.labId);
-    return `<div class="task-card" onmouseenter="App.hoverTask('${t.id}','${dev?dev.id:''}')" onmouseleave="App.hoverClear()" onclick="App.openExplain(event,'${t.id}',${dev?`'${dev.id}'`:'null'})"
-      style="border:1px solid ${hl?col.hex:'#e2e8f0'};border-left:6px solid ${col.hex};background:${hl?col.bg:'#fff'};padding:15px;box-shadow:${hl?'0 4px 14px rgba(15,23,42,.08)':'none'};">
+    return `<div class="task-card" data-hv data-task="${t.id}" data-dev="${dev?dev.id:''}"
+      onmouseenter="App.hoverTask('${t.id}','${dev?dev.id:''}')" onmouseleave="App.hoverClear()" onclick="App.openExplain(event,'${t.id}',${dev?`'${dev.id}'`:'null'})"
+      style="--mc:${col.hex};--mbg:${col.bg};padding:15px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span style="display:inline-flex;align-items:center;gap:6px;background:${col.hex};color:#fff;font-size:11px;font-weight:800;padding:4px 11px;border-radius:16px;">👤 ${dev?esc(dev.name):'Chưa phân công'}</span>
         <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;font-weight:600;">
@@ -1466,23 +1482,21 @@ function renderOverviewSplit(){
   // RIGHT: segmented workload bar + legend + member cards
   const segs = S.DEVS.map(d => {
     const col = devColor(d); const share = ws.shares[d.id] || 0;
-    const active = S.hoverDevId === d.id;
-    const dim = S.hoverDevId && !active;
-    return share > 0 ? `<div class="${dim?'dim':''}" style="width:${share}%;background:${col.hex};${active?'transform:scaleY(1.12);':''}" title="${esc(d.name)}: ${share}%"
+    return share > 0 ? `<div data-hv data-dev="${d.id}" style="width:${share}%;background:${col.hex};" title="${esc(d.name)}: ${share}%"
       onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()">${share>=12?share+'%':''}</div>` : '';
   }).join('');
   const legend = S.DEVS.map(d => {
     const col = devColor(d); const share = ws.shares[d.id]||0;
-    return `<button onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:10px;font-size:11.5px;font-weight:700;cursor:pointer;background:${col.bg};color:${col.hex};border:1px solid ${col.border};${S.hoverDevId===d.id?'box-shadow:0 0 0 2px '+col.border+';':''}">
+    return `<button class="legend-pill" data-hv data-dev="${d.id}" onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()"
+      style="--mbd:${col.border};background:${col.bg};color:${col.hex};border:1px solid ${col.border};">
       <span style="width:9px;height:9px;border-radius:50%;background:${col.hex};display:inline-block;"></span>${esc(d.name)} (${share}%)</button>`;
   }).join('');
   const memberCards = S.DEVS.map(d => {
     const col = devColor(d);
     const myTasks = S.TASKS.filter(t => S.assignments[t.id] === d.id);
     const avg = myTasks.length ? Math.round(myTasks.reduce((a,t)=>a+computeFit(t,d).score,0)/myTasks.length) : 0;
-    const hl = S.hoverDevId === d.id || myTasks.some(t=>t.id===S.hoverTaskId);
-    return `<div onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()" onclick="S.selectedDevId='${d.id}';App.setView('developers')"
-      style="border:1px solid ${hl?col.hex:'#e2e8f0'};background:${hl?col.bg:'#fff'};border-radius:14px;padding:13px;cursor:pointer;transition:all .15s;${hl?'box-shadow:0 4px 12px rgba(15,23,42,.08);':''}">
+    return `<div class="member-card" data-hv data-dev="${d.id}" onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()" onclick="S.selectedDevId='${d.id}';App.setView('developers')"
+      style="--mc:${col.hex};--mbg:${col.bg};">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="position:relative;flex:0 0 auto;">
           <div style="width:40px;height:40px;border-radius:50%;background:${col.bg};border:2px solid ${col.hex};color:${col.hex};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;">${esc(d.initials)}</div>
@@ -1764,15 +1778,24 @@ function renderCoachModal(){
     </div></div>`;
 }
 
+let LAST_ANIM_KEY = '';
+function gateAnim(html){
+  // fadeIn chỉ chạy khi đổi màn hình — vẽ lại cùng màn (mở modal, chat, kéo thả) thì bỏ để khỏi giật
+  const key = S.stage + '|' + S.view + '|' + S.page;
+  const changed = key !== LAST_ANIM_KEY;
+  LAST_ANIM_KEY = key;
+  return changed ? html : html.split('fadeIn').join('');
+}
+
 function render(){
   const root = document.getElementById('root');
-  if (S.stage === 'login') { root.innerHTML = renderLogin(); return; }
+  if (S.stage === 'login') { root.innerHTML = gateAnim(renderLogin()); return; }
   if (S.stage === 'coach') {
-    root.innerHTML = `<div style="min-height:100vh;">${renderNavbar()}${renderCoach()}${renderTicketDetailModal()}${renderTicketModal()}</div>`;
+    root.innerHTML = gateAnim(`<div style="min-height:100vh;">${renderNavbar()}${renderCoach()}${renderTicketDetailModal()}${renderTicketModal()}</div>`);
     return;
   }
-  if (S.stage === 'setup') { root.innerHTML = `<div>${renderNavbar()}${renderSetup()}</div>`; return; }
-  if (S.stage === 'analyzing') { root.innerHTML = renderAnalyzing(); return; }
+  if (S.stage === 'setup') { root.innerHTML = gateAnim(`<div>${renderNavbar()}${renderSetup()}</div>`); return; }
+  if (S.stage === 'analyzing') { root.innerHTML = gateAnim(renderAnalyzing()); return; }
   const viewHtml = S.view === 'dashboard' ? renderDashboard()
     : S.view === 'summary' ? renderSummaryTab()
     : S.view === 'developers' ? renderDevelopers()
@@ -1781,13 +1804,14 @@ function render(){
     : S.view === 'matching' ? renderMatching()
     : S.view === 'tickets' ? renderTicketsTab()
     : renderClaim();
-  root.innerHTML = `<div style="min-height:100vh;display:flex;flex-direction:column;">
+  root.innerHTML = gateAnim(`<div style="min-height:100vh;display:flex;flex-direction:column;">
     ${renderNavbar()}
     ${renderHeader()}
     <div style="flex:1;padding:24px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">${viewHtml}</div>
     ${renderExplain()}${renderChat()}
     ${renderTicketModal()}${renderTicketDetailModal()}${renderCoachModal()}
-  </div>`;
+  </div>`);
+  applyHover();
   const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
 }
 
