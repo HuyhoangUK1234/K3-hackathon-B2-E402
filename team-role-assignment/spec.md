@@ -90,8 +90,6 @@
 | **Demo** (Chuẩn bị dữ liệu mẫu, kịch bản demo, trình diễn hệ thống) | Huỳnh Hoàng Việt |
 
  Willing users: Hồ Phạm Đức Linh (với vai trò lead team của một nhóm), Nguyễn Văn Minh(với vai trò member), Nguyễn Mạnh Tú (với vai trò Lab Coach)
-
-## §9. Changelog
 ## §9. Changelog
 
 | Thời điểm (Giờ Việt Nam) | Đổi gì | Vì sao (trỏ về phản hồi / trường hợp) |
