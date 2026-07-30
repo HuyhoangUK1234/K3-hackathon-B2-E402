@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoleFit AI — Team Role Assignment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:oklch(0.97 0.005 85);font-family:'Public Sans',sans-serif;color:oklch(0.24 0.01 85);}
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar{height:8px;width:8px;}
+  ::-webkit-scrollbar-thumb{background:oklch(0.85 0.01 85);border-radius:8px;}
+  a{color:oklch(0.56 0.15 285);}
+  a:hover{color:oklch(0.46 0.15 285);}
+  @keyframes pulseGlow { 0%{opacity:0.85;} 50%{opacity:0.2;} 100%{opacity:0.85;} }
+  @keyframes spinRing { to { transform: rotate(360deg); } }
+  button{font-family:inherit;}
+  input,textarea,select{font-family:inherit;color:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+/* ================= State ================= */
+const ARCHITECTURE_OPTIONS = ['Microservices','Monolith','Monolith + service phụ trợ','Event-driven','Serverless'];
+const ANALYZE_LABELS = [
+  'Đọc README & tài liệu từ repo dự án',
+  'Đọc commit history & pull request từ GitHub',
+  'Trích xuất kỹ năng từ source code',
+  'Đánh giá mức độ thành thạo & khả năng học nhanh',
+  'Phân tích README, thư viện và kiến trúc dự án',
+  'Sinh Task Graph theo module và backlog',
+  'Tối ưu matching Developer × Task',
+];
+const DIFF_RANK = {'Thấp':0,'Trung bình':1,'Cao':2};
+const HUES = [285, 175, 230, 40, 330, 130, 20, 260];
+
+const S = {
+  stage: 'setup', setupStep: 1, analyzeIndex: 0, analyzeError: '',
+  view: 'dashboard', selectedDevId: null, currentUserId: null,
+  devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
+  sortCol: 'difficulty', sortDir: 'desc',
+  explainTaskId: null, explainDevId: null,
+  setup: null,   // filled below with sample data (editable/removable)
+  members: null,
+  chatOpen: false, chatInput: '', chatBusy: false,
+  chatMessages: [{from:'ai', text:'Xin chào! Hỏi mình về hồ sơ lập trình viên, Task Graph, Bài Lab hoặc phương án phân công nhé.'}],
+  // Filled from /api/analyze:
+  DEVS: [], TASKS: [], LABS: [], PROJECT: null, FIT_MATRIX: {}, DEFAULT_ASSIGNMENTS: {},
+  assignments: {}, warnings: [], workloadNotes: '',
+  skillLevels: {}, labProgress: {}, labCompleted: {}, labGains: {}, animatingDevIds: {},
+};
+
+function emptyMember(){ return { name:'', github:'', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:7 }; }
+function sampleSetup(){
+  return { projectName:'', repoUrl:'https://github.com/HuyhoangUK1234/Day04-E402-TeamB2',
+    readme:'', deps:'', structure:'', architecture:'Monolith', backlog:'', roadmap:'' };
+}
+function sampleMembers(){
+  return [
+    { name:'Bằng', github:'its6ueq', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
+    { name:'Tâm', github:'tranthithanhtam', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
+    { name:'Tiến', github:'vantiendl', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
+    { name:'Hoàng Việt', github:'HuyhoangUK1234', languages:'', frameworks:'', wantLearn:'', experienceYears:1, readiness:8 },
+  ];
+}
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+S.setup = sampleSetup();
+S.members = sampleMembers();
+
+/* ================= Helpers (ported from design) ================= */
+function parseDays(str){ const n = parseFloat(str); return String(str).includes('tuần') ? n*7 : n; }
+
+function difficultyStyle(d){
+  const map = {
+    'Thấp': 'background:oklch(0.93 0.05 175);color:oklch(0.35 0.12 175);',
+    'Trung bình': 'background:oklch(0.93 0.05 70);color:oklch(0.4 0.13 70);',
+    'Cao': 'background:oklch(0.92 0.06 25);color:oklch(0.45 0.15 25);',
+  };
+  return 'font-size:11px;font-weight:700;padding:4px 10px;border-radius:12px;' + (map[d]||map['Trung bình']);
+}
+function fitBadgeStyle(score){
+  const hue = score >= 88 ? 175 : score >= 75 ? 70 : 25;
+  return `font-size:11px;font-weight:800;padding:3px 8px;border-radius:10px;background:oklch(0.93 0.05 ${hue});color:oklch(0.4 0.13 ${hue});`;
+}
+function learnSpeed(dev){
+  const prRatio = dev.githubStats.prs / Math.max(1, dev.githubStats.commits);
+  const score = Math.max(20, Math.min(98, Math.round(dev.readiness * 7 + prRatio * 120 + dev.experienceYears * 2)));
+  const label = score >= 80 ? 'Nhanh' : score >= 60 ? 'Khá nhanh' : 'Trung bình';
+  return { score, label };
+}
+function devSkills(devId){
+  return Object.entries(S.skillLevels[devId] || {}).map(([name, level]) => ({name, level: Math.round(level)}));
+}
+function computeFit(task, dev){
+  const m = S.FIT_MATRIX[task.id] && S.FIT_MATRIX[task.id][dev.id];
+  if (m) return m;
+  const skills = devSkills(dev.id);
+  const devSkillNames = skills.map(s => s.name.toLowerCase());
+  const overlap = task.skills.filter(s => devSkillNames.includes(s.toLowerCase())).length;
+  const score = Math.min(95, 50 + overlap * 15 + dev.readiness);
+  return { score, reason: `${dev.name} có ${overlap}/${task.skills.length} kỹ năng trùng khớp yêu cầu và mức sẵn sàng học công nghệ mới ${dev.readiness}/10. (ước tính cục bộ — chưa có đánh giá AI cho cặp này)` };
+}
+function computeBreakdown(task, dev, workload, maxWorkload){
+  const skills = devSkills(dev.id);
+  const levels = task.skills.map(sk => {
+    const found = skills.find(x => x.name.toLowerCase() === sk.toLowerCase());
+    return found ? found.level : 0;
+  });
+  const skillMatch = Math.round(levels.reduce((a,b)=>a+b,0) / Math.max(1, levels.length));
+  const experience = Math.min(100, Math.round(dev.experienceYears * 22));
+  const similarity = Math.round(levels.filter(l => l > 0).length / Math.max(1, levels.length) * 100);
+  const learnAbility = learnSpeed(dev).score;
+  const workloadScore = Math.max(0, Math.round(100 - (workload / Math.max(1, maxWorkload)) * 55));
+  const balance = Math.max(0, Math.round(100 - Math.abs(workload - maxWorkload / 2) * 22));
+  const bar = (v) => `width:${v}%;background:oklch(0.6 0.13 ${v >= 75 ? 175 : v >= 50 ? 70 : 25});`;
+  return [
+    { label: 'Skill Matching', value: skillMatch, barStyle: bar(skillMatch) },
+    { label: 'Kinh nghiệm thực tế', value: experience, barStyle: bar(experience) },
+    { label: 'Tương đồng với yêu cầu công việc', value: similarity, barStyle: bar(similarity) },
+    { label: 'Khả năng học skill còn thiếu', value: learnAbility, barStyle: bar(learnAbility) },
+    { label: 'Khối lượng công việc hiện tại', value: workloadScore, barStyle: bar(workloadScore) },
+    { label: 'Cân bằng trong nhóm', value: balance, barStyle: bar(balance) },
+  ];
+}
+function requiredLevel(difficulty){ return difficulty === 'Cao' ? 88 : difficulty === 'Trung bình' ? 72 : 55; }
+
+function buildLabRadar(axes){
+  const R = 92, cx = 140, cy = 132, n = Math.max(3, axes.length);
+  const ang = i => (-90 + i * (360 / n)) * Math.PI / 180;
+  const poly = (fn) => axes.map((a, i) => {
+    const r = Math.max(0, Math.min(1, fn(a))) * R;
+    return `${(cx + r * Math.cos(ang(i))).toFixed(1)},${(cy + r * Math.sin(ang(i))).toFixed(1)}`;
+  }).join(' ');
+  const ring = (k) => Array.from({ length: n }, (_, i) => `${(cx + k * R * Math.cos(ang(i))).toFixed(1)},${(cy + k * R * Math.sin(ang(i))).toFixed(1)}`).join(' ');
+  return {
+    cx, cy,
+    teamPoints: poly(a => a.teamLevel / 100),
+    reqPoints: poly(a => a.reqLevel / 100),
+    grid100: ring(1), grid75: ring(0.75), grid50: ring(0.5), grid25: ring(0.25),
+    axisLines: axes.map((a, i) => ({ x2: cx + R * Math.cos(ang(i)), y2: cy + R * Math.sin(ang(i)) })),
+    labels: axes.map((a, i) => {
+      const lr = R + 22, x = cx + lr * Math.cos(ang(i)), y = cy + lr * Math.sin(ang(i));
+      return { name: a.name, x, y,
+        anchor: Math.abs(x - cx) < 12 ? 'middle' : x > cx ? 'start' : 'end',
+        valueY: y + 12, valueLabel: `nhóm ${a.teamLevel}% · cần ${a.reqLevel}%`,
+        valueFill: a.teamLevel >= a.reqLevel ? 'oklch(0.45 0.12 175)' : 'oklch(0.55 0.14 40)' };
+    }),
+  };
+}
+function buildRadar(skills){
+  const R = 85, cx = 110, cy = 110;
+  const axes = skills.slice(0, 6);
+  const n = Math.max(3, axes.length);
+  const angleFor = i => (-90 + i * (360 / n)) * Math.PI / 180;
+  const pointsFor = (fn) => axes.map((sk, i) => {
+    const ang = angleFor(i); const r = fn(sk) * R;
+    return `${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`;
+  }).join(' ');
+  return { cx, cy,
+    valuePoints: pointsFor(sk => sk.level / 100),
+    grid100: pointsFor(() => 1), grid75: pointsFor(() => 0.75), grid50: pointsFor(() => 0.5), grid25: pointsFor(() => 0.25),
+    axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: cx + R * Math.cos(a), y2: cy + R * Math.sin(a) }; }),
+    labels: axes.map((sk, i) => { const a = angleFor(i); const lr = R + 18; return { x: cx + lr * Math.cos(a), y: cy + lr * Math.sin(a), name: sk.name }; }),
+  };
+}
+function chipWidth(text, size){ return Math.round(text.length * size * 0.58) + 26; }
+
+function buildFlowGraph(devs, tasks, projectName){
+  const COL = { team: 40, member: 210, skill: 520, task: 860, project: 1150 };
+  const skillSet = []; const skillOwners = {};
+  devs.forEach((d, di) => devSkills(d.id).forEach(sk => {
+    if (sk.level <= 0) return;
+    if (!skillOwners[sk.name]) { skillOwners[sk.name] = []; skillSet.push(sk.name); }
+    skillOwners[sk.name].push({ devIdx: di, level: sk.level });
+  }));
+  const skillNeeders = {};
+  tasks.forEach((t, ti) => t.skills.forEach(sn => {
+    if (!skillOwners[sn]) { skillOwners[sn] = []; skillSet.push(sn); }
+    (skillNeeders[sn] = skillNeeders[sn] || []).push(ti);
+  }));
+  const H = Math.max(skillSet.length * 46, devs.length * 96, tasks.length * 74) + 40;
+  const yFor = (i, n) => 40 + (H - 80) * (n === 1 ? 0.5 : i / (n - 1));
+  const memberY = devs.map((d, i) => yFor(i, devs.length));
+  const skillOrdered = [...skillSet].sort((a, b) => {
+    const key = n => { const own = skillOwners[n];
+      return own.length ? own.reduce((acc, o) => acc + memberY[o.devIdx], 0) / own.length : H / 2 + 1e3; };
+    return key(a) - key(b);
+  });
+  const skillY = {};
+  skillOrdered.forEach((n, i) => { skillY[n] = yFor(i, skillOrdered.length); });
+  const taskOrdered = tasks.map((t, i) => ({ t, i })).sort((a, b) => {
+    const key = o => { const ys = o.t.skills.map(sn => skillY[sn]).filter(v => v != null);
+      return ys.length ? ys.reduce((x, y) => x + y, 0) / ys.length : H / 2; };
+    return key(a) - key(b);
+  });
+  const taskY = {};
+  taskOrdered.forEach((o, i) => { taskY[o.t.id] = yFor(i, taskOrdered.length); });
+  const curve = (x1, y1, x2, y2) => { const mx = (x1 + x2) / 2; return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`; };
+  const memberNodes = devs.map((d, i) => {
+    const w = chipWidth(d.name, 12.5);
+    return { id: d.id, name: d.name, initials: d.initials,
+      x: COL.member, y: memberY[i] - 17, w, h: 34,
+      textX: COL.member + w / 2, textY: memberY[i] + 4.5,
+      cy: memberY[i], rightX: COL.member + w, leftX: COL.member,
+      fill: `oklch(0.94 0.05 ${d.hue})`, stroke: `oklch(0.55 0.13 ${d.hue})`, textFill: `oklch(0.3 0.13 ${d.hue})`,
+      haloX: COL.member - 6, haloY: memberY[i] - 23, haloW: w + 12, haloH: 46 };
+  });
+  const skillNodes = skillOrdered.map(name => {
+    const owners = skillOwners[name] || [];
+    const best = owners.length ? Math.max(...owners.map(o => o.level)) : 0;
+    const w = chipWidth(name, 12);
+    const needed = !!skillNeeders[name];
+    const gap = needed && owners.length === 0;
+    return { name, x: COL.skill - w / 2, y: skillY[name] - 15, w, h: 30,
+      textX: COL.skill, textY: skillY[name] + 4,
+      leftX: COL.skill - w / 2, rightX: COL.skill + w / 2, cy: skillY[name],
+      fill: gap ? 'oklch(0.96 0.04 55)' : 'oklch(0.98 0.005 85)',
+      stroke: gap ? 'oklch(0.7 0.13 55)' : 'oklch(0.8 0.01 85)',
+      textFill: gap ? 'oklch(0.45 0.14 55)' : 'oklch(0.3 0.01 85)',
+      levelLabel: owners.length ? `${Math.round(best)}%` : 'thiếu',
+      levelX: COL.skill + w / 2 + 8, levelY: skillY[name] + 4,
+      levelFill: gap ? 'oklch(0.55 0.14 55)' : 'oklch(0.55 0.01 85)' };
+  });
+  const taskNodes = taskOrdered.map(o => {
+    const w = chipWidth(o.t.name, 12.5);
+    return { id: o.t.id, name: o.t.name,
+      x: COL.task, y: taskY[o.t.id] - 17, w, h: 34,
+      textX: COL.task + w / 2, textY: taskY[o.t.id] + 4.5,
+      leftX: COL.task, rightX: COL.task + w, cy: taskY[o.t.id] };
+  });
+  const memberEdges = [];
+  devs.forEach((d, di) => devSkills(d.id).forEach(sk => {
+    if (sk.level <= 0 || skillY[sk.name] == null) return;
+    memberEdges.push({
+      d: curve(memberNodes[di].rightX, memberY[di], COL.skill - chipWidth(sk.name, 12) / 2, skillY[sk.name]),
+      stroke: `oklch(0.62 0.13 ${d.hue})`, strokeWidth: 1 + sk.level / 30, opacity: 0.35 + sk.level / 250 });
+  }));
+  const taskEdges = [];
+  taskNodes.forEach(tn => {
+    const task = tasks.find(t => t.id === tn.id);
+    task.skills.forEach(sn => {
+      if (skillY[sn] == null) return;
+      taskEdges.push({ d: curve(COL.skill + chipWidth(sn, 12) / 2, skillY[sn], tn.leftX, tn.cy),
+        stroke: 'oklch(0.62 0.1 285)', strokeWidth: 1.6, opacity: 0.4 });
+    });
+  });
+  const teamRoot = { x: COL.team, y: H / 2 - 24, w: 118, h: 48, textX: COL.team + 59, textY: H / 2 + 5, rightX: COL.team + 118, cy: H / 2 };
+  const projectRoot = { x: COL.project, y: H / 2 - 30, w: 150, h: 60, textX: COL.project + 75, textY: H / 2 - 2, subY: H / 2 + 16, leftX: COL.project, cy: H / 2 };
+  const rootEdges = memberNodes.map(m => ({
+    d: curve(teamRoot.rightX, teamRoot.cy, m.leftX, m.cy),
+    stroke: 'oklch(0.72 0.02 85)', strokeWidth: 1.4, opacity: 0.6 }))
+  .concat(taskNodes.map(t => ({
+    d: curve(t.rightX, t.cy, projectRoot.leftX, projectRoot.cy),
+    stroke: 'oklch(0.72 0.02 85)', strokeWidth: 1.4, opacity: 0.6 })));
+  return { viewBox: `0 0 1320 ${H}`, height: H,
+    headers: [
+      { label: 'NHÓM', x: COL.team + 59 }, { label: 'THÀNH VIÊN', x: COL.member + 60 },
+      { label: 'KỸ NĂNG', x: COL.skill }, { label: 'VẤN ĐỀ / ĐẦU VIỆC', x: COL.task + 70 },
+      { label: 'DỰ ÁN', x: COL.project + 75 } ],
+    teamRoot, projectRoot, memberNodes, skillNodes, taskNodes,
+    edges: rootEdges.concat(memberEdges, taskEdges) };
+}
+
+/* ================= App actions ================= */
+const App = {
+  set(k, v){ S[k] = v; render(); },
+  setSetup(field, v){ S.setup[field] = v; },
+  setMember(i, field, v){
+    S.members[i][field] = (field === 'readiness' || field === 'experienceYears') ? Number(v) : v;
+  },
+  setReadinessLabel(i, v){
+    S.members[i].readiness = Number(v);
+    const el = document.getElementById('readiness-label-' + i);
+    if (el) el.textContent = 'Sẵn sàng học công nghệ mới: ' + v + '/10';
+  },
+  addMember(){ if (S.members.length < 8) { S.members.push(emptyMember()); render(); } },
+  fillSample(){
+    S.setup = { ...sampleSetup() };
+    S.members = sampleMembers();
+    S.analyzeError = '';
+    render();
+  },
+  removeMember(i){ if (S.members.length > 1) { S.members.splice(i, 1); render(); } },
+  goStep(n){ S.setupStep = n; render(); },
+
+  async submitSetup(){
+    const filled = S.members.filter(m => (m.name || '').trim() || (m.github || '').trim());
+    if (!filled.length) { alert('Cần ít nhất 1 thành viên (tên hoặc GitHub username).'); return; }
+    S.stage = 'analyzing'; S.analyzeIndex = 0; S.analyzeError = ''; render();
+    const timer = setInterval(() => {
+      if (S.analyzeIndex < ANALYZE_LABELS.length - 1) { S.analyzeIndex++; render(); }
+    }, 2600);
+    try {
+      const resp = await fetch('/api/analyze', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ setup: S.setup, members: filled }),
+      });
+      const data = await resp.json();
+      clearInterval(timer);
+      if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+      S.DEVS = data.devs; S.TASKS = data.tasks; S.LABS = data.labs; S.PROJECT = data.project;
+      S.FIT_MATRIX = data.fitMatrix; S.DEFAULT_ASSIGNMENTS = { ...data.assignments };
+      S.assignments = { ...data.assignments };
+      S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
+      S.skillLevels = {}; S.DEVS.forEach(d => { S.skillLevels[d.id] = { ...d.skills }; });
+      S.selectedDevId = S.DEVS[0].id; S.currentUserId = S.DEVS[0].id;
+      S.labProgress = {}; S.labCompleted = {}; S.labGains = {}; S.animatingDevIds = {};
+      S.analyzeIndex = ANALYZE_LABELS.length; render();
+      setTimeout(() => { S.stage = 'app'; S.view = 'dashboard'; render(); }, 420);
+    } catch (e) {
+      clearInterval(timer);
+      S.stage = 'setup'; S.setupStep = 1; S.analyzeError = String(e.message || e); render();
+    }
+  },
+
+  backToSetup(){ S.stage = 'setup'; S.setupStep = 1; render(); },
+  setView(v){ S.view = v; render(); },
+  selectDev(id){ S.selectedDevId = id; render(); },
+  setDevSearch(v){ S.devSearch = v; render(); },
+  setSkillFilter(v){ S.devSkillFilter = v; render(); },
+  setDifficultyFilter(v){ S.difficultyFilter = v; render(); },
+  selectUser(v){ S.currentUserId = v; render(); },
+  resetAssignments(){ S.assignments = { ...S.DEFAULT_ASSIGNMENTS }; render(); },
+  claimTask(id){ S.assignments[id] = S.currentUserId; render(); },
+  releaseTask(id){ S.assignments[id] = null; render(); },
+
+  allowDrop(e){ e.preventDefault(); },
+  dragStart(e, taskId){ e.dataTransfer.setData('text/plain', taskId); },
+  dropOnPool(e){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = null; render(); } },
+  dropOnDev(e, devId){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = devId; render(); } },
+
+  openExplain(e, taskId, devId){ if (e) e.stopPropagation(); S.explainTaskId = taskId; S.explainDevId = devId; render(); },
+  closeExplain(){ S.explainTaskId = null; S.explainDevId = null; render(); },
+
+  setLabProgress(labId, v){
+    S.labProgress[labId] = Number(v);
+    const el = document.getElementById('lab-progress-' + labId);
+    if (el) el.textContent = v + '%';
+  },
+
+  completeLab(labId){
+    if (S.labCompleted[labId]) return;
+    const lab = S.LABS.find(l => l.id === labId);
+    const labTasks = S.TASKS.filter(t => t.labId === labId);
+    const assignedDevIds = [...new Set(labTasks.map(t => S.assignments[t.id]).filter(Boolean))];
+    if (!assignedDevIds.length) return;
+    const progress = S.labProgress[labId] == null ? 100 : S.labProgress[labId];
+    const factor = progress / 100;
+    const difficultyBonus = lab.difficulty === 'Cao' ? 18 : lab.difficulty === 'Trung bình' ? 14 : 10;
+    const starts = {}, targets = {}, gains = [];
+    const devById = {}; S.DEVS.forEach(d => devById[d.id] = d);
+    assignedDevIds.forEach(devId => {
+      starts[devId] = {}; targets[devId] = {};
+      lab.requiredSkills.forEach(skillName => {
+        const isNew = S.skillLevels[devId][skillName] == null;
+        const cur = isNew ? 15 : S.skillLevels[devId][skillName];
+        const readiness = devById[devId] ? devById[devId].readiness : 8;
+        const delta = Math.round((isNew ? difficultyBonus + 16 : difficultyBonus) * factor * (0.7 + readiness / 30));
+        const target = Math.min(100, cur + delta);
+        starts[devId][skillName] = cur; targets[devId][skillName] = target;
+        if (target > Math.round(cur)) gains.push(`${devById[devId].name}: ${skillName} +${target - Math.round(cur)}`);
+        if (isNew) S.skillLevels[devId][skillName] = cur;
+      });
+      S.animatingDevIds[devId] = true;
+    });
+    S.labCompleted[labId] = 'pending'; S.labProgress[labId] = progress; S.labGains[labId] = gains;
+    render();
+    const steps = 26; let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      const t = step / steps;
+      assignedDevIds.forEach(devId => {
+        lab.requiredSkills.forEach(skillName => {
+          const a = starts[devId][skillName], b = targets[devId][skillName];
+          S.skillLevels[devId][skillName] = a + (b - a) * t;
+        });
+      });
+      if (step >= steps) {
+        clearInterval(timer);
+        assignedDevIds.forEach(id => S.animatingDevIds[id] = false);
+        S.labCompleted[labId] = true;
+      }
+      render();
+    }, 34);
+  },
+
+  toggleChat(){ S.chatOpen = !S.chatOpen; render(); },
+  setChatInput(v){ S.chatInput = v; },
+  chatKey(e){ if (e.key === 'Enter') { S.chatInput = e.target.value; App.sendChat(); } },
+
+  async sendChat(){
+    const input = document.getElementById('chat-input');
+    const text = ((input && input.value) || S.chatInput || '').trim();
+    if (!text || S.chatBusy) return;
+    S.chatInput = ''; S.chatBusy = true;
+    S.chatMessages.push({from:'user', text});
+    render();
+    try {
+      const summary = {
+        project: S.PROJECT ? { name: S.PROJECT.name, type: S.PROJECT.type, techStack: S.PROJECT.techStack } : null,
+        devs: S.DEVS.map(d => ({ name: d.name, role: d.roleSuited, skills: devSkills(d.id), githubStats: d.githubStats, wantLearn: d.wantLearn, readiness: d.readiness })),
+        assignments: Object.entries(S.assignments).map(([tid, devId]) => {
+          const t = S.TASKS.find(x => x.id === tid); const d = S.DEVS.find(x => x.id === devId);
+          const fit = d ? computeFit(t, d) : null;
+          return { task: t ? t.name : tid, dev: d ? d.name : null, fit: fit ? fit.score : null, reason: fit ? fit.reason : null };
+        }),
+        labsCompleted: Object.keys(S.labCompleted).filter(k => S.labCompleted[k] === true).map(k => { const l = S.LABS.find(x=>x.id===k); return l ? l.name : k; }),
+      };
+      const resp = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ message: text, state_summary: JSON.stringify(summary) }) });
+      const data = await resp.json();
+      S.chatMessages.push({from:'ai', text: data.reply || data.error || 'Lỗi không rõ.'});
+    } catch (e) {
+      S.chatMessages.push({from:'ai', text: 'Lỗi gọi server: ' + e.message});
+    }
+    S.chatBusy = false; render();
+    const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
+  },
+};
+
+/* ================= Render ================= */
+const card = 'background:oklch(0.995 0.003 85);border:1px solid oklch(0.9 0.006 85);';
+const inputStyle = 'width:100%;padding:11px 14px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);font-size:13.5px;outline:none;';
+const taStyle = inputStyle + 'font-family:inherit;resize:vertical;';
+const label12 = 'font-size:12.5px;font-weight:700;margin-bottom:6px;';
+const primaryBtn = 'background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:11px;padding:13px 22px;font-size:13.5px;font-weight:700;cursor:pointer;';
+
+function logoHtml(size){
+  return `<div style="width:34px;height:34px;border-radius:9px;background:oklch(0.56 0.15 285);display:flex;align-items:center;justify-content:center;">
+    <div style="width:14px;height:14px;border-radius:4px;background:oklch(0.97 0.01 285);"></div></div>`;
+}
+function avatarStyle(hue, px, fs){
+  return `width:${px}px;height:${px}px;border-radius:50%;background:oklch(0.93 0.05 ${hue});color:oklch(0.35 0.13 ${hue});font-size:${fs}px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto;`;
+}
+
+function renderSetup(){
+  const steps = [1,2].map(n =>
+    `<div style="font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;background:${S.setupStep===n?'oklch(0.93 0.03 285)':'oklch(0.96 0.006 85)'};color:${S.setupStep===n?'oklch(0.4 0.13 285)':'oklch(0.55 0.01 85)'};">${n===1?'1 · Dự án':'2 · Thành viên'}</div>`).join('');
+  const errBanner = S.analyzeError ? `<div style="background:oklch(0.95 0.04 25);border:1px solid oklch(0.75 0.1 25);color:oklch(0.4 0.14 25);border-radius:12px;padding:12px 16px;font-size:13px;margin-bottom:16px;"><strong>Phân tích thất bại:</strong> ${esc(S.analyzeError)}</div>` : '';
+
+  let body = '';
+  if (S.setupStep === 1) {
+    const su = S.setup;
+    body = `<div style="${card}border-radius:20px;padding:32px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:23px;">Bước 1 — Dữ liệu dự án</div>
+          <div style="font-size:13.5px;color:oklch(0.5 0.01 85);margin-top:6px;">Input cho Luồng 2 (Project Analysis): README, tài liệu yêu cầu, cấu trúc source, thư viện, kiến trúc, backlog, roadmap.</div>
+        </div>
+        <button style="flex:0 0 auto;border:1px solid oklch(0.8 0.06 285);background:oklch(0.96 0.02 285);color:oklch(0.42 0.13 285);border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="App.fillSample()">⚡ Điền lại dữ liệu mẫu (Team B2)</button>
+      </div>
+      <div style="margin-bottom:24px;"></div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div><div style="${label12}">Tên dự án</div>
+            <input type="text" placeholder="VD: EduConnect – AI Learning Platform" value="${esc(su.projectName)}" onchange="App.setSetup('projectName', this.value)" style="${inputStyle}" /></div>
+          <div><div style="${label12}">GitHub Repository</div>
+            <input type="text" placeholder="https://github.com/org/repo" value="${esc(su.repoUrl)}" onchange="App.setSetup('repoUrl', this.value)" style="${inputStyle}" />
+            <div style="font-size:11.5px;color:oklch(0.5 0.08 285);margin-top:5px;">✦ Chỉ cần điền repo — AI tự đọc README, thư viện và các file .md cần thiết. Các ô dưới là tuỳ chọn để bổ sung/ghi đè.</div></div>
+        </div>
+        <div><div style="${label12}">README.md / Tài liệu yêu cầu <span style="font-weight:500;color:oklch(0.55 0.01 85);">(tuỳ chọn — để trống sẽ tự đọc từ repo)</span></div>
+          <textarea placeholder="Để trống nếu đã điền repo — AI sẽ tự đọc. Hoặc dán nội dung README/đặc tả vào đây để ghi đè." onchange="App.setSetup('readme', this.value)" style="${taStyle}min-height:96px;">${esc(su.readme)}</textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div><div style="${label12}">Danh sách thư viện (package.json, requirements.txt, pom.xml…)</div>
+            <textarea placeholder="react, spring-boot-starter-web, torch, docker..." onchange="App.setSetup('deps', this.value)" style="${taStyle}min-height:76px;">${esc(su.deps)}</textarea></div>
+          <div><div style="${label12}">Cấu trúc source code</div>
+            <textarea placeholder="/backend /frontend /ml-service /infra ..." onchange="App.setSetup('structure', this.value)" style="${taStyle}min-height:76px;">${esc(su.structure)}</textarea></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+          <div><div style="${label12}">Kiến trúc dự án</div>
+            <select onchange="App.setSetup('architecture', this.value)" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);font-size:13.5px;background:oklch(0.995 0.003 85);outline:none;cursor:pointer;">
+              ${ARCHITECTURE_OPTIONS.map(a => `<option value="${esc(a)}" ${su.architecture===a?'selected':''}>${esc(a)}</option>`).join('')}
+            </select></div>
+          <div><div style="${label12}">Issue backlog</div>
+            <textarea placeholder="#12 Đăng nhập OAuth&#10;#18 Trang thanh toán..." onchange="App.setSetup('backlog', this.value)" style="${taStyle}min-height:76px;">${esc(su.backlog)}</textarea></div>
+          <div><div style="${label12}">Roadmap</div>
+            <textarea placeholder="Sprint 1: Auth&#10;Sprint 2: AI Service..." onchange="App.setSetup('roadmap', this.value)" style="${taStyle}min-height:76px;">${esc(su.roadmap)}</textarea></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:26px;">
+        <button style="${primaryBtn}" onclick="App.goStep(2)">Tiếp tục: Dữ liệu thành viên →</button>
+      </div>
+    </div>`;
+  } else {
+    const cards = S.members.map((m, i) => {
+      const hue = HUES[i % HUES.length];
+      const initials = (m.name || '?').trim().split(/\s+/).map(p=>p[0]).filter(Boolean);
+      const ini = ((initials[0]||'?') + (initials.length>1?initials[initials.length-1]:'')).toUpperCase();
+      const smallInput = 'font-size:12.5px;padding:8px 10px;border-radius:8px;border:1px solid oklch(0.92 0.006 85);outline:none;';
+      const smallLabel = 'font-size:11.5px;font-weight:700;margin-bottom:5px;color:oklch(0.45 0.01 85);';
+      return `<div style="border:1px solid oklch(0.92 0.006 85);border-radius:14px;padding:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="${avatarStyle(hue,34,12)}">${esc(ini)}</div>
+          <input type="text" placeholder="Tên thành viên" value="${esc(m.name)}" onchange="App.setMember(${i},'name',this.value)" style="font-weight:700;font-size:14px;padding:7px 10px;border-radius:8px;border:1px solid oklch(0.92 0.006 85);outline:none;width:180px;" />
+          <input type="text" placeholder="github username" value="${esc(m.github)}" onchange="App.setMember(${i},'github',this.value)" style="font-size:12.5px;padding:7px 10px;border-radius:8px;border:1px solid oklch(0.92 0.006 85);outline:none;width:170px;" />
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+            <div style="font-size:11.5px;color:oklch(0.5 0.01 85);">commit · PR · issue sẽ đọc từ GitHub</div>
+            <button style="border:1px solid oklch(0.9 0.006 85);background:oklch(0.98 0.003 85);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:600;cursor:pointer;color:oklch(0.45 0.12 25);" onclick="App.removeMember(${i})">✕</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div><div style="${smallLabel}">Ngôn ngữ lập trình</div>
+            <input type="text" placeholder="Java, SQL" value="${esc(m.languages)}" onchange="App.setMember(${i},'languages',this.value)" style="width:100%;${smallInput}" /></div>
+          <div><div style="${smallLabel}">Framework đã dùng</div>
+            <input type="text" placeholder="Spring Boot, React" value="${esc(m.frameworks)}" onchange="App.setMember(${i},'frameworks',this.value)" style="width:100%;${smallInput}" /></div>
+          <div><div style="${smallLabel}">Skill muốn học</div>
+            <input type="text" placeholder="Kubernetes, MLOps" value="${esc(m.wantLearn)}" onchange="App.setMember(${i},'wantLearn',this.value)" style="width:100%;${smallInput}" /></div>
+          <div style="display:flex;gap:12px;">
+            <div style="flex:0 0 110px;"><div style="${smallLabel}">Kinh nghiệm (năm)</div>
+              <input type="number" min="0" step="0.5" value="${m.experienceYears}" onchange="App.setMember(${i},'experienceYears',this.value)" style="width:100%;${smallInput}" /></div>
+            <div style="flex:1;"><div style="${smallLabel}" id="readiness-label-${i}">Sẵn sàng học công nghệ mới: ${m.readiness}/10</div>
+              <input type="range" min="1" max="10" step="1" value="${m.readiness}" oninput="App.setReadinessLabel(${i}, this.value)" style="width:100%;accent-color:oklch(0.56 0.15 285);" /></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    body = `<div style="${card}border-radius:20px;padding:32px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:23px;">Bước 2 — Dữ liệu lập trình viên</div>
+      <div style="font-size:13.5px;color:oklch(0.5 0.01 85);margin-top:6px;margin-bottom:22px;">Input cho Luồng 1 (Developer Analysis). Chỉ số commit / PR / issue được đọc tự động từ GitHub; bạn khai báo phần còn lại.</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">${cards}</div>
+      <button style="margin-top:14px;border:1px dashed oklch(0.82 0.008 85);background:oklch(0.98 0.003 85);border-radius:11px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;color:oklch(0.45 0.05 285);" onclick="App.addMember()">＋ Thêm thành viên</button>
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:24px;">
+        <button style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.9 0.006 85);border-radius:11px;padding:13px 20px;font-size:13.5px;font-weight:600;cursor:pointer;" onclick="App.goStep(1)">← Quay lại</button>
+        <button style="${primaryBtn}" onclick="App.submitSetup()">Đưa cho AI phân tích →</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div style="min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:44px 20px 60px;">
+    <div style="width:100%;max-width:900px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px;">
+        ${logoHtml()}
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;">RoleFit AI</div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">${steps}</div>
+      </div>
+      ${errBanner}${body}
+    </div></div>`;
+}
+
+function renderAnalyzing(){
+  const steps = ANALYZE_LABELS.map((label, i) => {
+    const done = i < S.analyzeIndex, active = i === S.analyzeIndex;
+    return `<div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+      <div style="flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;background:${done?'oklch(0.93 0.05 175)':active?'oklch(0.93 0.03 285)':'oklch(0.95 0.006 85)'};color:${done?'oklch(0.35 0.12 175)':'oklch(0.4 0.13 285)'};">${done?'✓':active?'•':''}</div>
+      <div style="color:${done?'oklch(0.35 0.01 85)':active?'oklch(0.3 0.05 285)':'oklch(0.65 0.01 85)'};font-weight:${active?'700':'500'};">${esc(label)}</div>
+    </div>`;
+  }).join('');
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;">
+    <div style="width:100%;max-width:540px;${card}border-radius:20px;padding:34px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;">
+        <svg width="34" height="34" viewBox="0 0 34 34" style="animation: spinRing 1s linear infinite;">
+          <circle cx="17" cy="17" r="14" fill="none" stroke="oklch(0.92 0.02 285)" stroke-width="4"></circle>
+          <path d="M17 3 a14 14 0 0 1 14 14" fill="none" stroke="oklch(0.56 0.15 285)" stroke-width="4" stroke-linecap="round"></path>
+        </svg>
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:19px;">AI đang phân tích</div>
+          <div style="font-size:12.5px;color:oklch(0.5 0.01 85);">Trích xuất kỹ năng, dựng Task Graph và tối ưu phân công — gọi OpenAI thật, chờ chút.</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">${steps}</div>
+    </div></div>`;
+}
+
+/* ---------- App stage views ---------- */
+function assignedCountMap(){
+  const counts = {}; S.DEVS.forEach(d => counts[d.id] = 0);
+  Object.values(S.assignments).forEach(devId => { if (devId) counts[devId] = (counts[devId]||0)+1; });
+  return counts;
+}
+function devTopFit(dev){ return Math.max(...S.TASKS.map(t => computeFit(t, dev).score)); }
+
+function renderHeader(){
+  const tabsDef = [
+    ['dashboard','Tổng quan'],['developers','Lập trình viên'],['graph','Sơ đồ kỹ năng'],
+    ['project','Dự án & Lab'],['matching','Matching'],['claim','Nhận việc']];
+  const tabs = tabsDef.map(([key,label]) =>
+    `<button style="border:none;background:${S.view===key?'oklch(0.93 0.03 285)':'transparent'};color:${S.view===key?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-weight:600;font-size:12.5px;padding:9px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;" onclick="App.setView('${key}')">${label}</button>`).join('');
+  return `<div style="min-height:68px;flex:0 0 auto;background:oklch(0.995 0.003 85);border-bottom:1px solid oklch(0.9 0.006 85);display:flex;align-items:center;flex-wrap:wrap;row-gap:8px;padding:10px 24px;gap:16px;position:sticky;top:0;z-index:20;">
+    <div style="display:flex;align-items:center;gap:10px;flex:0 0 auto;">${logoHtml()}
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15.5px;letter-spacing:-0.01em;">RoleFit AI</div></div>
+    <div style="display:flex;gap:2px;flex:1 1 320px;min-width:0;overflow-x:auto;">${tabs}</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto;">
+      <select onchange="App.selectUser(this.value)" style="font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);outline:none;cursor:pointer;">
+        ${S.DEVS.map(d => `<option value="${d.id}" ${S.currentUserId===d.id?'selected':''}>Tôi là ${esc(d.name)}</option>`).join('')}
+      </select>
+      <select style="font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);outline:none;cursor:pointer;max-width:230px;">
+        <option>${esc(S.PROJECT.name)}</option>
+      </select>
+      <button style="border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="App.backToSetup()">⚙ Thiết lập</button>
+    </div></div>`;
+}
+
+function renderDashboard(){
+  const counts = assignedCountMap();
+  const maxCount = Math.max(1, ...Object.values(counts));
+  const assigned = Object.entries(S.assignments).filter(([,v])=>v);
+  const avgFit = Math.round(assigned.reduce((acc,[tid,devId])=>{
+    const t = S.TASKS.find(x=>x.id===tid), d = S.DEVS.find(x=>x.id===devId);
+    return acc + computeFit(t,d).score; }, 0) / Math.max(1, assigned.length));
+  const nLabsDone = Object.values(S.labCompleted).filter(v=>v===true).length;
+  const statCards = [
+    { label:'Lập trình viên', value: S.DEVS.length, hint:'Đã dựng hồ sơ năng lực' },
+    { label:'Bài Lab', value: S.LABS.length, hint: `${nLabsDone} đã hoàn thành` },
+    { label:'Fit Score TB', value: avgFit + '%', hint:'Trên các việc đã gán' },
+    { label:'Cân bằng khối lượng', value: (maxCount - Math.min(...Object.values(counts))) <= 1 ? 'Tốt' : 'Khá', hint:'Chênh lệch giữa các thành viên' },
+  ].map(s => `<div style="${card}border-radius:14px;padding:20px;">
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);text-transform:uppercase;letter-spacing:0.04em;">${s.label}</div>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:28px;margin-top:6px;">${s.value}</div>
+      <div style="font-size:12px;color:oklch(0.55 0.01 85);margin-top:4px;">${s.hint}</div></div>`).join('');
+  const workload = S.DEVS.map(d => `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+      <div style="width:100px;font-size:13px;font-weight:600;flex:0 0 auto;">${esc(d.name)}</div>
+      <div style="flex:1;height:10px;background:oklch(0.93 0.006 85);border-radius:6px;overflow:hidden;">
+        <div style="height:100%;border-radius:6px;width:${((counts[d.id]||0)/maxCount)*100}%;background:oklch(0.56 0.13 ${d.hue});"></div></div>
+      <div style="width:70px;font-size:12px;color:oklch(0.5 0.01 85);text-align:right;flex:0 0 auto;">${counts[d.id]||0} việc</div></div>`).join('');
+  const tech = S.PROJECT.techStack.map(t => `<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;">${esc(t)}</div>`).join('');
+  const navBtn = (view, label) => `<button style="text-align:left;padding:12px 14px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.98 0.003 85);cursor:pointer;font-size:13px;font-weight:600;color:oklch(0.24 0.01 85);" onclick="App.setView('${view}')">${label}</button>`;
+  const warns = S.warnings.length ? `<div style="background:oklch(0.97 0.03 70);border:1px solid oklch(0.8 0.09 70);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.4 0.1 70);margin-bottom:20px;"><strong>Cảnh báo từ AI:</strong><br>${S.warnings.map(esc).join('<br>')}</div>` : '';
+  const notes = S.workloadNotes ? `<div style="background:oklch(0.95 0.02 285);border:1px solid oklch(0.82 0.06 285);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.38 0.09 285);margin-bottom:20px;"><strong>Ghi chú của AI về workload:</strong> ${esc(S.workloadNotes)}</div>` : '';
+  return `<div>
+    <div style="margin-bottom:24px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Tổng quan nhóm dự án</div>
+      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kết quả tổng hợp của ba luồng: phân tích lập trình viên, phân tích dự án và matching. Đây là đề xuất — trưởng nhóm quyết định cuối.</div>
+    </div>
+    ${warns}${notes}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;">${statCards}</div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;">
+      <div style="${card}border-radius:14px;padding:22px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:16px;">Khối lượng công việc theo thành viên</div>${workload}</div>
+      <div style="${card}border-radius:14px;padding:22px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:14px;">Công nghệ chính của dự án</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${tech}</div>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin:20px 0 10px;">Đi tới</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${navBtn('developers','Luồng 1 — Phân tích lập trình viên →')}
+          ${navBtn('graph','Sơ đồ kỹ năng nhóm →')}
+          ${navBtn('project','Luồng 2 — Bài Lab & Task Graph →')}
+          ${navBtn('matching','Luồng 3 — Matching & phân công →')}
+          ${navBtn('claim','Nhận việc (dành cho thành viên) →')}
+        </div></div></div></div>`;
+}
+
+function renderDevelopers(){
+  const allSkillNames = [...new Set(S.DEVS.flatMap(d => devSkills(d.id).map(sk => sk.name)))];
+  const chips = ['all', ...allSkillNames].map(name =>
+    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 285)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(name)}</button>`).join('');
+  const filtered = S.DEVS.filter(d => {
+    const mS = d.name.toLowerCase().includes(S.devSearch.toLowerCase());
+    const mK = S.devSkillFilter === 'all' || devSkills(d.id).some(sk => sk.name === S.devSkillFilter);
+    return mS && mK;
+  });
+  const list = filtered.map(d => `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;background:${S.selectedDevId===d.id?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};border:1px solid ${S.selectedDevId===d.id?'oklch(0.7 0.1 285)':'oklch(0.9 0.006 85)'};" onclick="App.selectDev('${d.id}')">
+      <div style="${avatarStyle(d.hue,36,12)}">${esc(d.initials)}</div>
+      <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;">${esc(d.name)}</div>
+        <div style="font-size:12px;color:oklch(0.5 0.01 85);">${esc(d.roleSuited)}</div></div>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:oklch(0.4 0.13 175);">${devTopFit(d)}%</div>
+    </div>`).join('') || `<div style="padding:20px;text-align:center;font-size:13px;color:oklch(0.55 0.01 85);">Không tìm thấy lập trình viên phù hợp.</div>`;
+
+  const d = S.DEVS.find(x => x.id === S.selectedDevId) || S.DEVS[0];
+  const skills = devSkills(d.id);
+  const radar = buildRadar(skills);
+  const ls = learnSpeed(d);
+  const skillBars = skills.map(sk => `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk.name)}</span><span style="color:oklch(0.5 0.01 85);">${sk.level}%</span></div>
+      <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;background:oklch(0.56 0.15 285);border-radius:4px;width:${sk.level}%;"></div></div></div>`).join('');
+  const learning = (d.wantLearn||'').split(',').map(x=>x.trim()).filter(Boolean).map(l =>
+    `<div style="background:oklch(0.93 0.05 175);color:oklch(0.35 0.12 175);font-size:12px;font-weight:600;padding:5px 10px;border-radius:16px;">${esc(l)}</div>`).join('') || '<span style="font-size:12px;color:oklch(0.55 0.01 85);">—</span>';
+  const strengths = d.strengths.map(s => `<div style="font-size:12.5px;color:oklch(0.35 0.01 85);margin-bottom:6px;padding-left:14px;position:relative;"><span style="position:absolute;left:0;color:oklch(0.4 0.13 175);">＋</span>${esc(s)}</div>`).join('');
+  const missing = d.missing.map(m => `<div style="font-size:12.5px;color:oklch(0.45 0.01 85);margin-bottom:6px;padding-left:14px;position:relative;"><span style="position:absolute;left:0;color:oklch(0.62 0.14 55);">－</span>${esc(m)}</div>`).join('');
+  const path = d.learningPath.map((text,i) => `<div style="display:flex;gap:8px;font-size:12.5px;color:oklch(0.35 0.01 85);margin-bottom:8px;">
+      <div style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i+1}</div>
+      <div>${esc(text)}</div></div>`).join('');
+  const evidence = Object.entries(d.skillEvidence || {}).map(([k,v]) =>
+    `<div style="font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:4px;"><strong style="color:oklch(0.4 0.05 285);">${esc(k)}</strong>: ${esc(v)}</div>`).join('');
+  const pulse = S.animatingDevIds[d.id] ? 'animation: pulseGlow 0.7s ease-in-out infinite;' : '';
+
+  return `<div>
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 1 — Phân tích lập trình viên</div>
+      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kỹ năng trích xuất từ commit và source code; mức thành thạo, khả năng học nhanh và lộ trình do AI đánh giá.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start;">
+      <div>
+        <input type="text" placeholder="Tìm theo tên..." value="${esc(S.devSearch)}" onchange="App.setDevSearch(this.value)" style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);font-size:13px;margin-bottom:12px;background:oklch(0.995 0.003 85);outline:none;" />
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">${chips}</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">${list}</div>
+      </div>
+      <div style="${card}border-radius:16px;padding:26px;">
+        <div style="display:flex;gap:16px;align-items:center;margin-bottom:20px;">
+          <div style="${avatarStyle(d.hue,64,20)}">${esc(d.initials)}</div>
+          <div style="flex:1;">
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:20px;">${esc(d.name)}</div>
+            <div style="font-size:13px;color:oklch(0.5 0.01 85);margin-top:2px;">Vai trò phù hợp: <strong style="color:oklch(0.3 0.01 85);">${esc(d.roleSuited)}</strong> · ${d.experienceYears} năm kinh nghiệm · @${esc(d.github)}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:oklch(0.4 0.13 175);">${devTopFit(d)}%</div>
+            <div style="font-size:11px;color:oklch(0.5 0.01 85);">Fit Score cao nhất</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+          <div style="background:oklch(0.98 0.003 85);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;">${d.githubStats.commits}</div>
+            <div style="font-size:11px;color:oklch(0.5 0.01 85);">Commits (repo gần đây)</div></div>
+          <div style="background:oklch(0.98 0.003 85);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;">${d.githubStats.prs}</div>
+            <div style="font-size:11px;color:oklch(0.5 0.01 85);">Pull Requests</div></div>
+          <div style="background:oklch(0.98 0.003 85);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;">${d.githubStats.issues}</div>
+            <div style="font-size:11px;color:oklch(0.5 0.01 85);">Issues đã xử lý</div></div>
+          <div style="background:oklch(0.95 0.04 175);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;color:oklch(0.35 0.12 175);">${ls.label}</div>
+            <div style="font-size:11px;color:oklch(0.4 0.08 175);">Khả năng học nhanh (${ls.score}/100)</div></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:18px;font-size:12.5px;">
+          <div><span style="color:oklch(0.5 0.01 85);">Ngôn ngữ:</span> <strong>${esc(d.languages||'—')}</strong></div>
+          <div><span style="color:oklch(0.5 0.01 85);">Framework:</span> <strong>${esc(d.frameworks||'—')}</strong></div>
+        </div>
+        <div style="font-size:12.5px;color:oklch(0.4 0.01 85);margin-bottom:16px;line-height:1.5;background:oklch(0.98 0.003 85);border-radius:10px;padding:12px 14px;">${esc(d.summary)}</div>
+        <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:22px;border-top:1px solid oklch(0.94 0.005 85);border-bottom:1px solid oklch(0.94 0.005 85);padding:20px 0;">
+          <svg viewBox="0 0 220 220" width="220" height="220" style="flex:0 0 auto;">
+            <polygon points="${radar.grid100}" fill="none" stroke="oklch(0.88 0.006 85)" stroke-width="1"></polygon>
+            <polygon points="${radar.grid75}" fill="none" stroke="oklch(0.9 0.006 85)" stroke-width="1"></polygon>
+            <polygon points="${radar.grid50}" fill="none" stroke="oklch(0.92 0.006 85)" stroke-width="1"></polygon>
+            <polygon points="${radar.grid25}" fill="none" stroke="oklch(0.94 0.006 85)" stroke-width="1"></polygon>
+            ${radar.axisLines.map(ax => `<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.9 0.006 85)" stroke-width="1"></line>`).join('')}
+            <polygon points="${radar.valuePoints}" fill="oklch(0.56 0.15 285 / 0.22)" stroke="oklch(0.56 0.15 285)" stroke-width="2" style="${pulse}"></polygon>
+            ${radar.labels.map(lb => `<text x="${lb.x}" y="${lb.y}" text-anchor="middle" font-size="10" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}</text>`).join('')}
+          </svg>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;">Mức độ thành thạo (cập nhật sau mỗi Lab)</div>
+            ${skillBars}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+          <div>
+            <div style="font-weight:700;font-size:13px;margin:0 0 8px;">Skill muốn học</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">${learning}</div>
+            <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:8px;">Mức độ sẵn sàng học công nghệ mới: <strong>${d.readiness}/10</strong></div>
+            <div style="font-weight:700;font-size:13px;margin:16px 0 8px;">Điểm mạnh</div>${strengths}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin:0 0 8px;">Skill còn thiếu</div>${missing}
+            <div style="font-weight:700;font-size:13px;margin:16px 0 8px;">Lộ trình học đề xuất</div>${path}
+          </div>
+        </div>
+        <div style="margin-top:18px;border-top:1px solid oklch(0.94 0.005 85);padding-top:14px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">Bằng chứng cho từng skill (chống bịa)</div>${evidence}
+        </div>
+      </div></div></div>`;
+}
+
+function renderGraph(){
+  const g = buildFlowGraph(S.DEVS, S.TASKS, S.PROJECT.name);
+  const edges = g.edges.map(e => `<path d="${e.d}" fill="none" stroke="${e.stroke}" stroke-width="${e.strokeWidth}" stroke-opacity="${e.opacity}"></path>`).join('');
+  const members = g.memberNodes.map(m => {
+    const halo = S.animatingDevIds[m.id] ? `<rect x="${m.haloX}" y="${m.haloY}" width="${m.haloW}" height="${m.haloH}" rx="16" fill="none" stroke="${m.stroke}" stroke-width="3" style="animation: pulseGlow 0.9s ease-in-out infinite;"></rect>` : '';
+    return `<g>${halo}<rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" rx="10" fill="${m.fill}" stroke="${m.stroke}" stroke-width="2"></rect>
+      <text x="${m.textX}" y="${m.textY}" text-anchor="middle" font-size="12.5" font-family="Public Sans, sans-serif" font-weight="700" fill="${m.textFill}">${esc(m.name)}</text></g>`;
+  }).join('');
+  const skills = g.skillNodes.map(n => `<g>
+      <rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="9" fill="${n.fill}" stroke="${n.stroke}" stroke-width="1.5"></rect>
+      <text x="${n.textX}" y="${n.textY}" text-anchor="middle" font-size="12" font-family="Public Sans, sans-serif" font-weight="600" fill="${n.textFill}">${esc(n.name)}</text>
+      <text x="${n.levelX}" y="${n.levelY}" font-size="10" font-family="Public Sans, sans-serif" font-weight="700" fill="${n.levelFill}">${n.levelLabel}</text></g>`).join('');
+  const tasks = g.taskNodes.map(t => `<g>
+      <rect x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" rx="10" fill="oklch(0.97 0.02 285)" stroke="oklch(0.68 0.1 285)" stroke-width="1.8"></rect>
+      <text x="${t.textX}" y="${t.textY}" text-anchor="middle" font-size="12.5" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.34 0.11 285)">${esc(t.name)}</text></g>`).join('');
+  return `<div>
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Sơ đồ kỹ năng nhóm</div>
+      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Đọc từ trái sang phải: cả nhóm → từng thành viên → kỹ năng → vấn đề của dự án → dự án. Các cột được sắp để nét nối hạn chế cắt nhau.</div>
+    </div>
+    <div style="${card}border-radius:16px;padding:18px;overflow-x:auto;">
+      <svg viewBox="${g.viewBox}" style="width:1320px;max-width:none;display:block;">
+        ${g.headers.map(h => `<text x="${h.x}" y="22" text-anchor="middle" font-size="10.5" letter-spacing="1.2" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.62 0.01 85)">${h.label}</text>`).join('')}
+        ${edges}
+        <g><rect x="${g.teamRoot.x}" y="${g.teamRoot.y}" width="${g.teamRoot.w}" height="${g.teamRoot.h}" rx="12" fill="oklch(0.94 0.03 285)" stroke="oklch(0.56 0.15 285)" stroke-width="2"></rect>
+        <text x="${g.teamRoot.textX}" y="${g.teamRoot.textY}" text-anchor="middle" font-size="14" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.36 0.14 285)">Cả nhóm</text></g>
+        ${members}${skills}${tasks}
+        <g><rect x="${g.projectRoot.x}" y="${g.projectRoot.y}" width="${g.projectRoot.w}" height="${g.projectRoot.h}" rx="12" fill="oklch(0.94 0.04 175)" stroke="oklch(0.5 0.12 175)" stroke-width="2"></rect>
+        <text x="${g.projectRoot.textX}" y="${g.projectRoot.textY}" text-anchor="middle" font-size="13" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.33 0.12 175)">Dự án</text>
+        <text x="${g.projectRoot.textX}" y="${g.projectRoot.subY}" text-anchor="middle" font-size="9.5" font-family="Public Sans, sans-serif" font-weight="600" fill="oklch(0.42 0.09 175)">${esc(S.PROJECT.type)} · ${esc(S.PROJECT.scale)}</text></g>
+      </svg>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:oklch(0.5 0.01 85);">
+      <div>Độ dày nét nối từ thành viên = mức thành thạo</div>
+      <div style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;border-radius:4px;background:oklch(0.96 0.04 55);border:1.5px solid oklch(0.7 0.13 55);display:inline-block;"></span>Kỹ năng dự án cần nhưng nhóm chưa có</div>
+    </div></div>`;
+}
+
+function renderProject(){
+  const p = S.PROJECT;
+  const conf = p.confidence === 'low' && p.clarifyingQuestions.length ?
+    `<div style="background:oklch(0.97 0.03 70);border:1px solid oklch(0.8 0.09 70);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.4 0.1 70);margin-bottom:16px;">
+      <strong>Thông tin dự án chưa đủ chắc (confidence: low) — AI cần hỏi thêm:</strong>
+      <ul style="margin:8px 0 0 18px;padding:0;">${p.clarifyingQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>` : '';
+  const tech = p.techStack.map(t => `<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;">${esc(t)}</div>`).join('');
+  const backlog = p.backlog.length ? p.backlog.map(b => `<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;border-bottom:1px solid oklch(0.95 0.005 85);">
+      <div>${esc(b.title)}</div><div style="color:oklch(0.5 0.01 85);">${esc(b.module)}</div></div>`).join('')
+    : '<div style="font-size:12.5px;color:oklch(0.55 0.01 85);">Không nhập backlog.</div>';
+  const roadmap = p.roadmap.length ? p.roadmap.map(r => `<div style="display:flex;gap:10px;font-size:12.5px;padding:7px 0;border-bottom:1px solid oklch(0.95 0.005 85);">
+      <div style="font-weight:700;flex:0 0 78px;color:oklch(0.4 0.13 285);">${esc(r.phase)}</div><div>${esc(r.goal)}</div></div>`).join('')
+    : '<div style="font-size:12.5px;color:oklch(0.55 0.01 85);">Không nhập roadmap.</div>';
+  const modules = p.modules.map(m => `<div style="${card}border-radius:12px;padding:14px;font-size:13px;font-weight:600;text-align:center;">${esc(m)}</div>`).join('');
+  const filters = ['all','Thấp','Trung bình','Cao'].map(df =>
+    `<button style="border:1px solid ${S.difficultyFilter===df?'oklch(0.56 0.15 285)':'oklch(0.9 0.006 85)'};background:${S.difficultyFilter===df?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};color:${S.difficultyFilter===df?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setDifficultyFilter('${df}')">${df==='all'?'Tất cả':df}</button>`).join('');
+
+  const labsFiltered = S.LABS.filter(l => S.difficultyFilter === 'all' || l.difficulty === S.difficultyFilter);
+  const dir = S.sortDir === 'asc' ? 1 : -1;
+  const labsSorted = [...labsFiltered].sort((a,b) => {
+    const av = S.sortCol === 'difficulty' ? DIFF_RANK[a.difficulty] : parseDays(a.time);
+    const bv = S.sortCol === 'difficulty' ? DIFF_RANK[b.difficulty] : parseDays(b.time);
+    return (av - bv) * dir;
+  });
+
+  const labsHtml = labsSorted.map(lab => {
+    const labTasks = S.TASKS.filter(t => t.labId === lab.id);
+    const tasksDisp = labTasks.map(t => {
+      const dev = S.DEVS.find(dd => dd.id === S.assignments[t.id]);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;padding:9px 11px;background:oklch(0.98 0.003 85);border-radius:8px;">
+        <div style="flex:1;"><strong>${esc(t.name)}</strong> <span style="color:oklch(0.5 0.01 85);">· ${esc(t.skills.join(', '))}</span></div>
+        <div style="color:oklch(0.5 0.01 85);">${dev ? esc(dev.name) : 'Chưa phân công'}</div></div>`;
+    }).join('');
+    const allAssigned = labTasks.length > 0 && labTasks.every(t => S.assignments[t.id]);
+    const completedState = S.labCompleted[lab.id];
+    const isAnimating = labTasks.some(t => S.assignments[t.id] && S.animatingDevIds[S.assignments[t.id]]);
+    const progress = S.labProgress[lab.id] == null ? 100 : S.labProgress[lab.id];
+    let buttonLabel = 'Hoàn thành Lab', buttonDisabled = false;
+    let btnBg = 'oklch(0.56 0.15 285)', btnColor = 'oklch(0.98 0.01 285)';
+    if (completedState === true) { buttonLabel = `Đã hoàn thành ${progress}% ✓`; buttonDisabled = true; btnBg = 'oklch(0.93 0.05 175)'; btnColor = 'oklch(0.35 0.12 175)'; }
+    else if (isAnimating) { buttonLabel = 'Đang hợp nhất kỹ năng...'; buttonDisabled = true; btnBg = 'oklch(0.93 0.006 85)'; btnColor = 'oklch(0.5 0.01 85)'; }
+    else if (!allAssigned) { buttonLabel = 'Cần phân công đủ trước'; buttonDisabled = true; btnBg = 'oklch(0.93 0.006 85)'; btnColor = 'oklch(0.5 0.01 85)'; }
+    const gains = S.labGains[lab.id] || [];
+    const gainsHtml = (completedState === true && gains.length) ?
+      `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">${gains.map(g=>`<div style="background:oklch(0.93 0.05 175);color:oklch(0.32 0.12 175);font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:14px;">${esc(g)}</div>`).join('')}</div>` : '';
+
+    const reqLevel = requiredLevel(lab.difficulty);
+    const extraSkills = labTasks.flatMap(t => t.skills).filter(sn => !lab.requiredSkills.includes(sn));
+    const allTeamSkills = [...new Set(S.DEVS.flatMap(d => devSkills(d.id).map(s=>s.name)))];
+    const supportPool = [...new Set(extraSkills.concat(allTeamSkills))].filter(sn => !lab.requiredSkills.includes(sn));
+    const axisNames = [...lab.requiredSkills];
+    let pi = 0;
+    while (axisNames.length < 3 && pi < supportPool.length) { axisNames.push(supportPool[pi]); pi++; }
+    const supportCount = axisNames.length - lab.requiredSkills.length;
+    const axes = axisNames.map(sn => {
+      const isCore = lab.requiredSkills.includes(sn);
+      let best = 0, bestDev = null;
+      S.DEVS.forEach(dd => {
+        const f = devSkills(dd.id).find(x => x.name.toLowerCase() === sn.toLowerCase());
+        if (f && f.level > best) { best = f.level; bestDev = dd; }
+      });
+      return { name: sn, isCore, teamLevel: Math.round(best), reqLevel: isCore ? reqLevel : Math.round(reqLevel * 0.5), bestDevName: bestDev ? bestDev.name : '—' };
+    });
+    const coreAxes = axes.filter(a => a.isCore);
+    const coverage = Math.round(coreAxes.reduce((acc, a) => acc + Math.min(1, a.teamLevel / a.reqLevel), 0) / Math.max(1, coreAxes.length) * 100);
+    const meetsAll = coreAxes.every(a => a.teamLevel >= a.reqLevel);
+    const radar = buildLabRadar(axes);
+    const axisBars = coreAxes.map(a => `<div style="margin-bottom:11px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">
+          <span><strong>${esc(a.name)}</strong> <span style="color:oklch(0.55 0.01 85);">· cao nhất: ${esc(a.bestDevName)}</span></span>
+          <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:${a.teamLevel >= a.reqLevel ? 'oklch(0.93 0.05 175);color:oklch(0.35 0.12 175)' : 'oklch(0.95 0.05 40);color:oklch(0.45 0.14 40)'};">${a.teamLevel >= a.reqLevel ? 'Đáp ứng' : 'Thiếu ' + (a.reqLevel - a.teamLevel) + '%'}</span>
+        </div>
+        <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;margin-bottom:3px;">
+          <div style="height:100%;border-radius:4px;width:${a.teamLevel}%;background:oklch(0.56 0.15 285);"></div></div>
+        <div style="height:4px;background:oklch(0.95 0.006 85);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;border-radius:4px;width:${a.reqLevel}%;background:oklch(0.62 0.14 40);"></div></div>
+      </div>`).join('');
+
+    return `<div style="${card}border-radius:14px;padding:18px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div style="font-weight:700;font-size:14.5px;">${esc(lab.name)}</div>
+          <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:3px;max-width:520px;">${esc(lab.description)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;">
+            ${lab.requiredSkills.map(rs=>`<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;">${esc(rs)}</div>`).join('')}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:230px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="${difficultyStyle(lab.difficulty)}">${lab.difficulty}</span>
+            <span style="font-size:12px;color:oklch(0.5 0.01 85);">${esc(lab.time)}</span>
+          </div>
+          <div style="width:100%;">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:4px;">
+              <span>Mức độ hoàn thành</span><span id="lab-progress-${lab.id}">${progress}%</span></div>
+            <input type="range" min="0" max="100" step="5" value="${progress}" oninput="App.setLabProgress('${lab.id}', this.value)" ${completedState?'disabled':''} style="width:100%;accent-color:oklch(0.56 0.15 285);" />
+          </div>
+          <button style="border:none;background:${btnBg};color:${btnColor};border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:700;cursor:${buttonDisabled?'default':'pointer'};white-space:nowrap;" onclick="App.completeLab('${lab.id}')" ${buttonDisabled?'disabled':''}>${buttonLabel}</button>
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:20px;align-items:flex-start;border-top:1px solid oklch(0.94 0.005 85);padding-top:16px;flex-wrap:wrap;">
+        <svg viewBox="0 0 280 285" width="280" height="285" style="flex:0 0 auto;">
+          <polygon points="${radar.grid100}" fill="none" stroke="oklch(0.88 0.006 85)" stroke-width="1"></polygon>
+          <polygon points="${radar.grid75}" fill="none" stroke="oklch(0.91 0.006 85)" stroke-width="1"></polygon>
+          <polygon points="${radar.grid50}" fill="none" stroke="oklch(0.93 0.006 85)" stroke-width="1"></polygon>
+          <polygon points="${radar.grid25}" fill="none" stroke="oklch(0.95 0.006 85)" stroke-width="1"></polygon>
+          ${radar.axisLines.map(ax=>`<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.91 0.006 85)" stroke-width="1"></line>`).join('')}
+          <polygon points="${radar.reqPoints}" fill="oklch(0.62 0.14 40 / 0.14)" stroke="oklch(0.62 0.14 40)" stroke-width="2" stroke-dasharray="5 4"></polygon>
+          <polygon points="${radar.teamPoints}" fill="oklch(0.56 0.15 285 / 0.22)" stroke="oklch(0.56 0.15 285)" stroke-width="2.2"></polygon>
+          ${radar.labels.map(lb=>`<g><text x="${lb.x}" y="${lb.y}" text-anchor="${lb.anchor}" font-size="11" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.32 0.01 85)">${esc(lb.name)}</text>
+            <text x="${lb.x}" y="${lb.valueY}" text-anchor="${lb.anchor}" font-size="9.5" font-family="Public Sans, sans-serif" font-weight="600" fill="${lb.valueFill}">${lb.valueLabel}</text></g>`).join('')}
+        </svg>
+        <div style="flex:1;min-width:280px;">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px;">
+            <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:${meetsAll ? 'oklch(0.4 0.13 175)' : coverage >= 80 ? 'oklch(0.5 0.14 70)' : 'oklch(0.5 0.15 30)'};">${coverage}%</div>
+            <div style="font-size:12.5px;color:oklch(0.45 0.01 85);">${meetsAll ? 'Nhóm đáp ứng đủ yêu cầu Lab' : 'Còn kỹ năng chưa đạt ngưỡng yêu cầu'}</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;row-gap:6px;font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"><span style="width:12px;height:3px;background:oklch(0.56 0.15 285);display:inline-block;flex:0 0 auto;"></span>Năng lực nhóm (điểm cao nhất)</div>
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"><span style="width:12px;height:3px;background:oklch(0.62 0.14 40);display:inline-block;flex:0 0 auto;"></span>Yêu cầu Lab (${reqLevel}%)</div>
+          </div>
+          ${supportCount > 0 ? `<div style="font-size:11px;color:oklch(0.58 0.01 85);margin-bottom:10px;">Đã thêm ${supportCount} trục kỹ năng phụ trợ (yêu cầu thấp hơn) để radar đọc được.</div>` : ''}
+          ${axisBars}
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px;">${tasksDisp}</div>
+      ${gainsHtml}
+    </div>`;
+  }).join('');
+
+  return `<div>
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 2 — Phân tích dự án & Bài Lab</div>
+      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">LLM đọc README, cấu trúc source, thư viện, backlog và roadmap để xác định loại dự án, quy mô, module và Task Graph.</div>
+    </div>
+    ${conf}
+    <div style="${card}border-radius:16px;padding:24px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:19px;">${esc(p.name)}</div>
+          <div style="font-size:13px;color:oklch(0.5 0.01 85);margin-top:4px;max-width:560px;">${esc(p.description)}</div>
+        </div>
+        <div style="display:flex;gap:20px;">
+          <div style="text-align:center;"><div style="font-size:11px;color:oklch(0.5 0.01 85);">Loại dự án</div>
+            <div style="font-weight:700;font-size:13.5px;margin-top:2px;">${esc(p.type)}</div></div>
+          <div style="text-align:center;"><div style="font-size:11px;color:oklch(0.5 0.01 85);">Quy mô</div>
+            <div style="font-weight:700;font-size:13.5px;margin-top:2px;">${esc(p.scale)}</div></div>
+          <div style="text-align:center;"><div style="font-size:11px;color:oklch(0.5 0.01 85);">Kiến trúc</div>
+            <div style="font-weight:700;font-size:13.5px;margin-top:2px;">${esc(p.architecture)}</div></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;">${tech}</div>
+      ${(p.sourcesRead && p.sourcesRead.length) ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid oklch(0.94 0.005 85);">
+        <span style="font-size:11.5px;font-weight:700;color:oklch(0.45 0.01 85);margin-right:8px;">AI đã tự đọc từ repo:</span>
+        ${p.sourcesRead.map(f=>`<span style="display:inline-block;background:oklch(0.95 0.02 175);color:oklch(0.35 0.1 175);font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;margin:2px 4px 2px 0;">📄 ${esc(f)}</span>`).join('')}
+      </div>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
+      <div style="${card}border-radius:14px;padding:20px;">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:10px;">Issue backlog</div>${backlog}</div>
+      <div style="${card}border-radius:14px;padding:20px;">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:10px;">Roadmap</div>${roadmap}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">${modules}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;">Bài Lab & Task Graph</div>
+        <div style="font-size:12.5px;color:oklch(0.5 0.01 85);margin-top:2px;">Mỗi Lab có kỹ năng yêu cầu và đầu việc riêng. Hoàn thành Lab → kỹ năng hợp nhất vào thành viên phụ trách theo mức độ hoàn thành.</div>
+      </div>
+      <div style="display:flex;gap:6px;">${filters}</div>
+    </div>
+    ${labsHtml}
+  </div>`;
+}
+
+function renderMatching(){
+  const pool = S.TASKS.filter(t => !S.assignments[t.id]).map(t =>
+    `<div draggable="true" ondragstart="App.dragStart(event,'${t.id}')" onclick="App.openExplain(event,'${t.id}',null)" style="${card}border-radius:10px;padding:12px;margin-bottom:10px;cursor:grab;">
+      <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
+      <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-top:4px;">${esc(t.skills.join(', '))}</div>
+      <div style="margin-top:8px;"><span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span></div>
+    </div>`).join('');
+  const lanes = S.DEVS.map(d => {
+    const laneTasks = S.TASKS.filter(t => S.assignments[t.id] === d.id);
+    const cards = laneTasks.map(t => {
+      const fit = computeFit(t, d);
+      return `<div draggable="true" ondragstart="App.dragStart(event,'${t.id}')" onclick="App.openExplain(event,'${t.id}','${d.id}')" style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.9 0.006 85);border-radius:10px;padding:12px;margin-bottom:10px;cursor:grab;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
+          <div style="${fitBadgeStyle(fit.score)}">${fit.score}%</div></div>
+        <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-top:4px;">${esc(t.skills.join(', '))}</div>
+        <div style="margin-top:8px;"><span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span></div>
+      </div>`;
+    }).join('');
+    const avgFit = laneTasks.length ? Math.round(laneTasks.reduce((a,t)=>a+computeFit(t,d).score,0)/laneTasks.length) : 0;
+    return `<div style="flex:0 0 240px;${card}border-radius:14px;padding:14px;min-height:420px;" ondragover="App.allowDrop(event)" ondrop="App.dropOnDev(event,'${d.id}')">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <div style="${avatarStyle(d.hue,26,10.5)}">${esc(d.initials)}</div>
+        <div style="font-weight:700;font-size:13px;">${esc(d.name)}</div></div>
+      <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-bottom:12px;">${laneTasks.length} việc · Fit TB ${avgFit}%</div>
+      ${cards}</div>`;
+  }).join('');
+  const rows = Object.entries(S.assignments).filter(([,devId]) => devId).map(([taskId, devId]) => {
+    const task = S.TASKS.find(t => t.id === taskId);
+    const dev = S.DEVS.find(d => d.id === devId);
+    const fit = computeFit(task, dev);
+    return { devName: dev.name, taskName: task.name, fitScore: fit.score, reason: fit.reason };
+  }).sort((a,b) => b.fitScore - a.fitScore).map(r =>
+    `<div style="display:grid;grid-template-columns:150px 170px 90px 1fr;gap:0;padding:12px 4px;border-bottom:1px solid oklch(0.95 0.005 85);align-items:center;font-size:12.5px;">
+      <div style="font-weight:700;">${esc(r.devName)}</div><div>${esc(r.taskName)}</div>
+      <div><span style="${fitBadgeStyle(r.fitScore)}">${r.fitScore}%</span></div>
+      <div style="color:oklch(0.4 0.01 85);line-height:1.45;">${esc(r.reason)}</div></div>`).join('');
+  return `<div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 3 — Matching Developer × Task</div>
+        <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kéo thả để chỉnh phân công. Nhấn vào thẻ để xem điểm từng tiêu chí và lý do của AI.</div>
+      </div>
+      <button style="background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.resetAssignments()">Áp dụng phân bổ AI đề xuất</button>
+    </div>
+    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;margin-bottom:26px;">
+      <div style="flex:0 0 240px;background:oklch(0.96 0.006 85);border:1px dashed oklch(0.82 0.008 85);border-radius:14px;padding:14px;min-height:420px;" ondragover="App.allowDrop(event)" ondrop="App.dropOnPool(event)">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Chưa phân công</div>
+        <div style="font-size:11px;color:oklch(0.5 0.01 85);margin-bottom:12px;">${S.TASKS.filter(t=>!S.assignments[t.id]).length} việc</div>
+        ${pool}</div>
+      ${lanes}
+    </div>
+    <div style="${card}border-radius:16px;padding:22px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:14px;">Kết quả phân công & lý do</div>
+      <div style="display:grid;grid-template-columns:150px 170px 90px 1fr;gap:0;font-size:12px;color:oklch(0.5 0.01 85);padding:0 4px 10px;border-bottom:1px solid oklch(0.9 0.006 85);">
+        <div>Thành viên</div><div>Công việc</div><div>Fit Score</div><div>Lý do phân công</div></div>
+      ${rows}
+    </div></div>`;
+}
+
+function renderClaim(){
+  const me = S.DEVS.find(d => d.id === S.currentUserId) || S.DEVS[0];
+  const open = S.TASKS.filter(t => !S.assignments[t.id]).map(t => {
+    const fit = computeFit(t, me);
+    const skills = devSkills(me.id);
+    const missing = t.skills.filter(sn => !skills.some(x => x.name.toLowerCase() === sn.toLowerCase()));
+    return `<div style="border:1px solid oklch(0.92 0.006 85);border-radius:12px;padding:14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="font-weight:700;font-size:13.5px;">${esc(t.name)}</div>
+        <div style="${fitBadgeStyle(fit.score)}">${fit.score}%</div></div>
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(t.skills.join(', '))} · ${esc(t.time)}</div>
+      <div style="font-size:12px;color:oklch(0.45 0.01 85);margin-top:5px;">${missing.length ? 'Sẽ học thêm: ' + esc(missing.join(', ')) : 'Bạn đã có đủ kỹ năng yêu cầu'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:11px;">
+        <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
+        <button style="background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;" onclick="App.claimTask('${t.id}')">Nhận việc này</button>
+      </div></div>`;
+  }).join('') || `<div style="padding:26px;text-align:center;font-size:13px;color:oklch(0.55 0.01 85);">Không còn đầu việc trống — mọi việc đã có người nhận.</div>`;
+  const mine = S.TASKS.filter(t => S.assignments[t.id] === S.currentUserId).map(t => {
+    const fit = computeFit(t, me);
+    return `<div style="border:1px solid oklch(0.92 0.006 85);border-radius:12px;padding:14px;margin-bottom:10px;background:oklch(0.98 0.003 85);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="font-weight:700;font-size:13.5px;">${esc(t.name)}</div>
+        <div style="${fitBadgeStyle(fit.score)}">${fit.score}%</div></div>
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:5px;">${esc(t.skills.join(', '))} · ${esc(t.time)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:11px;">
+        <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
+        <button style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.88 0.006 85);border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;" onclick="App.releaseTask('${t.id}')">Trả lại việc</button>
+      </div></div>`;
+  }).join('') || `<div style="padding:26px;text-align:center;font-size:13px;color:oklch(0.55 0.01 85);">Bạn chưa nhận việc nào.</div>`;
+  return `<div>
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Nhận việc</div>
+      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Bạn đang xem với vai trò <strong style="color:oklch(0.3 0.01 85);">${esc(me.name)}</strong>. Chọn đầu việc còn trống để nhận, hoặc trả lại việc đang giữ.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+      <div style="${card}border-radius:16px;padding:22px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:4px;">Việc còn trống</div>
+        <div style="font-size:12.5px;color:oklch(0.5 0.01 85);margin-bottom:14px;">Fit Score tính riêng cho bạn.</div>
+        ${open}</div>
+      <div style="${card}border-radius:16px;padding:22px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:4px;">Việc của tôi</div>
+        <div style="font-size:12.5px;color:oklch(0.5 0.01 85);margin-bottom:14px;">Hoàn thành Lab tương ứng để cộng kỹ năng.</div>
+        ${mine}</div>
+    </div></div>`;
+}
+
+function renderExplain(){
+  if (!S.explainTaskId) return '';
+  const task = S.TASKS.find(t => t.id === S.explainTaskId);
+  let devName = 'Chưa phân công', score = '', reason = 'Đầu việc này chưa được gán cho thành viên nào. Kéo thẻ vào một lane để xem điểm phù hợp và lý do.', breakdown = '', skillMatch = '';
+  if (S.explainDevId) {
+    const dev = S.DEVS.find(dd => dd.id === S.explainDevId);
+    const counts = assignedCountMap();
+    const maxCount = Math.max(1, ...Object.values(counts));
+    const fit = computeFit(task, dev);
+    devName = dev.name; score = fit.score + '%'; reason = fit.reason;
+    breakdown = computeBreakdown(task, dev, counts[dev.id] || 0, maxCount).map(b =>
+      `<div style="margin-bottom:11px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${b.label}</span><span style="color:oklch(0.5 0.01 85);">${b.value}%</span></div>
+        <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;${b.barStyle}"></div></div>
+      </div>`).join('');
+    const skills = devSkills(dev.id);
+    skillMatch = task.skills.map(sk => {
+      const found = skills.find(x => x.name.toLowerCase() === sk.toLowerCase());
+      const level = found ? found.level : 0;
+      return `<div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk)}</span><span style="color:oklch(0.5 0.01 85);">${found ? level + '%' : 'Chưa có'}</span></div>
+        <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:${level}%;background:${level>0?'oklch(0.56 0.15 285)':'oklch(0.85 0.01 85)'};"></div></div>
+      </div>`;
+    }).join('');
+  } else {
+    skillMatch = task.skills.map(sk => `<div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk)}</span><span style="color:oklch(0.5 0.01 85);">—</span></div>
+      <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:0%;"></div></div></div>`).join('');
+  }
+  return `<div style="position:fixed;inset:0;background:oklch(0.2 0.01 85 / 0.35);z-index:40;display:flex;justify-content:flex-end;" onclick="App.closeExplain()">
+    <div style="width:440px;max-width:92vw;height:100%;background:oklch(0.995 0.003 85);padding:26px;overflow-y:auto;box-shadow:-8px 0 24px oklch(0.2 0.01 85 / 0.12);" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:17px;">Giải thích của AI</div>
+        <button style="border:none;background:oklch(0.94 0.006 85);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;" onclick="App.closeExplain()">✕</button>
+      </div>
+      <div style="font-weight:700;font-size:15px;">${esc(task.name)}</div>
+      <div style="font-size:12px;color:oklch(0.5 0.01 85);margin:4px 0 16px;">Kỹ năng cần: ${esc(task.skills.join(', '))} · Độ khó ${task.difficulty} · ${esc(task.time)}</div>
+      <div style="background:oklch(0.98 0.003 85);border-radius:12px;padding:16px;margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-weight:700;font-size:14px;">${esc(devName)}</div>
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:20px;color:oklch(0.4 0.13 175);">${score}</div>
+        </div>
+        <div style="font-size:13px;color:oklch(0.35 0.01 85);margin-top:8px;line-height:1.5;">${esc(reason)}</div>
+      </div>
+      ${breakdown ? `<div style="font-weight:700;font-size:13px;margin-bottom:10px;">Điểm theo tiêu chí</div>${breakdown}` : ''}
+      <div style="font-weight:700;font-size:13px;margin:18px 0 10px;">So khớp kỹ năng yêu cầu</div>
+      ${skillMatch}
+    </div></div>`;
+}
+
+function renderChat(){
+  const fab = `<button style="position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:oklch(0.56 0.15 285);border:none;color:oklch(0.98 0.01 285);font-size:20px;cursor:pointer;box-shadow:0 8px 20px oklch(0.2 0.01 85 / 0.2);z-index:50;" onclick="App.toggleChat()">💬</button>`;
+  if (!S.chatOpen) return fab;
+  const msgs = S.chatMessages.map(m => `<div style="${m.from==='ai'?'display:flex;justify-content:flex-start;':'display:flex;justify-content:flex-end;'}">
+      <div style="${m.from==='ai'
+        ? 'background:oklch(0.94 0.01 285);color:oklch(0.3 0.05 285);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;max-width:85%;line-height:1.4;'
+        : 'background:oklch(0.56 0.15 285);color:white;padding:9px 12px;border-radius:12px 12px 3px 12px;font-size:12.5px;max-width:85%;line-height:1.4;'}">${esc(m.text)}</div>
+    </div>`).join('');
+  const busy = S.chatBusy ? `<div style="display:flex;justify-content:flex-start;"><div style="background:oklch(0.94 0.01 285);color:oklch(0.45 0.05 285);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;">AI đang trả lời…</div></div>` : '';
+  return `${fab}<div style="position:fixed;bottom:88px;right:24px;width:340px;height:440px;${card}border-radius:16px;box-shadow:0 12px 32px oklch(0.2 0.01 85 / 0.18);display:flex;flex-direction:column;z-index:50;">
+    <div style="padding:14px 16px;border-bottom:1px solid oklch(0.9 0.006 85);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-weight:700;font-size:13.5px;">Trợ lý AI</div>
+      <button style="border:none;background:oklch(0.94 0.006 85);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:12px;" onclick="App.toggleChat()">✕</button>
+    </div>
+    <div id="chat-scroll" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">${msgs}${busy}</div>
+    <div style="padding:12px;border-top:1px solid oklch(0.9 0.006 85);display:flex;gap:8px;">
+      <input id="chat-input" type="text" placeholder="Hỏi AI về phân công..." value="${esc(S.chatInput)}" onchange="App.setChatInput(this.value)" onkeydown="App.chatKey(event)" style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);font-size:13px;outline:none;" />
+      <button style="border:none;background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border-radius:9px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.sendChat()">Gửi</button>
+    </div></div>`;
+}
+
+function render(){
+  const root = document.getElementById('root');
+  if (S.stage === 'setup') { root.innerHTML = renderSetup(); return; }
+  if (S.stage === 'analyzing') { root.innerHTML = renderAnalyzing(); return; }
+  const viewHtml = S.view === 'dashboard' ? renderDashboard()
+    : S.view === 'developers' ? renderDevelopers()
+    : S.view === 'graph' ? renderGraph()
+    : S.view === 'project' ? renderProject()
+    : S.view === 'matching' ? renderMatching()
+    : renderClaim();
+  root.innerHTML = `<div style="min-height:100vh;display:flex;flex-direction:column;">
+    ${renderHeader()}
+    <div style="flex:1;padding:32px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">${viewHtml}</div>
+    ${renderExplain()}${renderChat()}
+  </div>`;
+  const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
+}
+
+render();
+</script>
+</body>
+</html>

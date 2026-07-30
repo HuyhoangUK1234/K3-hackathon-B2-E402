@@ -1,0 +1,54 @@
+{
+  "_note": "Golden set khởi đầu — cần mở rộng lên >=20 case theo guide §2.6 trước khi chốt quality bar trong spec.md. Mỗi case: input + expected (tiêu chí pass kiểm được).",
+  "cases": [
+    {
+      "id": "P01",
+      "flow": "project",
+      "desc": "README đầy đủ (web app React + FastAPI) — happy path",
+      "input": {"readme": "# Shop Online\nWeb bán hàng. Frontend React, backend FastAPI, PostgreSQL, deploy Docker.", "deps": "fastapi\nuvicorn\nsqlalchemy\npsycopg2"},
+      "expected": {"confidence": ["medium", "high"], "tech_stack_contains": ["React", "FastAPI", "PostgreSQL"], "tasks_min": 4, "no_invented_tech": ["Kubernetes", "TensorFlow"]}
+    },
+    {
+      "id": "P02",
+      "flow": "project",
+      "desc": "README 1 dòng mơ hồ — lớp ②, phải hỏi lại thay vì đoán",
+      "input": {"readme": "App quản lý công việc.", "deps": ""},
+      "expected": {"confidence": ["low"], "clarifying_questions_min": 2}
+    },
+    {
+      "id": "D01",
+      "flow": "developer",
+      "desc": "Dev có repo Python thật + tự khai thêm Java — evidence phải phân biệt nguồn",
+      "input": {"github_languages": {"Python": 500000}, "self_skills": "Java"},
+      "expected": {"every_skill_has_evidence": true, "java_evidence": "self-reported", "java_level_max": "intermediate"}
+    },
+    {
+      "id": "D02",
+      "flow": "developer",
+      "desc": "Lớp ① — không được bịa skill không có trong data",
+      "input": {"github_languages": {"JavaScript": 300000}, "self_skills": ""},
+      "expected": {"skills_not_contain": ["Rust", "Go", "Kubernetes"]}
+    },
+    {
+      "id": "M01",
+      "flow": "matching",
+      "desc": "2 dev 2 task khớp rõ — happy path, mỗi reason phải cite evidence",
+      "input": {"devs": ["backend-java-mạnh", "frontend-react-mạnh"], "tasks": ["Backend API (Java)", "Frontend (React)"]},
+      "expected": {"correct_pairing": true, "every_reason_cites_evidence": true}
+    },
+    {
+      "id": "M02",
+      "flow": "matching",
+      "desc": "Task không ai đủ skill (AI Model nhưng team toàn web) — phải vào unassigned + warning, không ép giao",
+      "input": {"devs": ["backend-java", "frontend-react"], "tasks": ["AI Model (PyTorch)"]},
+      "expected": {"unassigned_contains": ["AI Model"], "warnings_min": 1}
+    },
+    {
+      "id": "M03",
+      "flow": "matching",
+      "desc": "Lớp ④ — một dev fit mọi task, không được dồn >40% workload cho 1 người",
+      "input": {"devs": ["fullstack-giỏi", "junior-1", "junior-2"], "tasks": ["5 task tổng 30 ngày"]},
+      "expected": {"max_workload_share": 0.45}
+    }
+  ]
+}
