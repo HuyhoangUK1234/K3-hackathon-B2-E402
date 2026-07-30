@@ -1,0 +1,29 @@
+[
+    {
+    "id": 1,
+    "name": "hoang viet",
+    "MSSV":"2A2026",
+    "github": "link github",
+    "labs":[
+        {
+            "name": "lab1",
+            "repoURL":"abc",
+            "report":["link my report markdown here"],
+            "group-report": [],
+            "blocker":["what make me hard in this lab"],
+            "intension":["what i want to do in the next lab"]
+        },
+        {
+            "name": "lab2",
+            "repoURL":"abc",
+            "report":["markdown here"],
+            "group-report": ["link group report markdown here"],
+            "blocker":["what make me hard in this lab"],
+            "intension":["what i want to do in the next lab"]
+        }
+    ]
+}
+]
+
+
+
