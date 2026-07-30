@@ -73,13 +73,7 @@
 - Khi bị đòi ngoài phạm vi (3): xem §5 case 5-6.
 - Case đặc thù domain (4): xem §5 case 7-8.
 
-## §7. Kiểm thử
-- Chiều chất lượng: (a) grounding — không skill/reason nào thiếu evidence; (b) an toàn phân công — không ai quá tải, task thiếu người vào unassigned; (c) hành vi khi thiếu info — hỏi lại thay vì đoán.
-- Golden set: `eval/golden_set.json` — hiện 7 case khung, [TODO mở rộng ≥20 theo guide §2.6].
-- Quality bar: "Đạt khi ≥ __% qua bộ, và 100% case lớp (1) (không bịa evidence) pass" [TODO chốt trước 23:59 N1].
-- Kết quả các lượt chạy: [TODO — bảng % sau mỗi lượt `python scripts/run_eval.py`]
-
-## §8. Phân công & kế hoạch
+## §7. Phân công & kế hoạch
  Phân công:
 
 | Hạng mục | Thành viên phụ trách |
@@ -91,7 +85,7 @@
 | **Demo** (Chuẩn bị dữ liệu mẫu, kịch bản demo, trình diễn hệ thống) | Huỳnh Hoàng Việt |
 
  Willing users: Hồ Phạm Đức Linh (với vai trò lead team của một nhóm), Nguyễn Văn Minh(với vai trò member), Nguyễn Mạnh Tú (với vai trò Lab Coach)
-## §9. Changelog
+## §8. Changelog
 
 | Thời điểm (Giờ Việt Nam) | Đổi gì | Vì sao (trỏ về phản hồi / trường hợp) |
 |--------------------------|--------|----------------------------------------|
