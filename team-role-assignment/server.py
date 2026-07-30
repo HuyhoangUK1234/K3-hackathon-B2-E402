@@ -19,8 +19,27 @@ load_dotenv()
 app = FastAPI(title="AI Lab Team")
 STATIC = Path(__file__).parent / "static"
 DATA = Path(__file__).parent / "data"
+SEED = Path(__file__).parent / "seed"
 DATA.mkdir(exist_ok=True)
 _io_lock = Lock()
+
+
+def _coaches() -> list[dict]:
+    """Tài khoản Lab Coach từ seed/labcoach.json. Không có file -> danh sách rỗng."""
+    f = SEED / "labcoach.json"
+    if not f.exists():
+        return []
+    try:
+        raw = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    return [{"id": str(c.get("id", "")).strip(), "name": c.get("name") or ""}
+            for c in raw if str(c.get("id", "")).strip()]
+
+
+def _find_coach(coach_id) -> dict | None:
+    key = str(coach_id or "").strip()
+    return next((c for c in _coaches() if c["id"] == key), None) if key else None
 
 
 def _load(name: str) -> list:
@@ -63,6 +82,7 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     status: str | None = None       # pending | resolved
     coachResponse: str | None = None
+    coachId: str | int | None = None  # phải khớp seed/labcoach.json
 
 
 class GroupUpdate(BaseModel):
@@ -215,17 +235,45 @@ def create_ticket(req: TicketCreate):
     return ticket
 
 
+@app.get("/api/coaches")
+def list_coaches():
+    """Tài khoản Lab Coach dùng để đăng nhập (demo, không mật khẩu)."""
+    return _coaches()
+
+
 @app.patch("/api/tickets/{ticket_id}")
 def update_ticket(ticket_id: str, req: TicketUpdate):
+    """Chỉ Lab Coach có trong seed/labcoach.json mới đổi được ticket.
+
+    Đóng ticket thì ghi lại ai đóng (resolvedBy) và lúc nào — mở lại thì xoá dấu vết đó.
+    """
+    coach = _find_coach(req.coachId)
+    if coach is None:
+        return JSONResponse(status_code=403, content={
+            "error": f"coachId '{req.coachId}' không có trong seed/labcoach.json — "
+                     f"chỉ Lab Coach mới cập nhật được ticket."})
+
     tickets = _load("tickets.json")
     for t in tickets:
-        if t["id"] == ticket_id:
-            if req.status in ("pending", "resolved"):
-                t["status"] = req.status
-            if req.coachResponse is not None:
-                t["coachResponse"] = req.coachResponse
-            _save("tickets.json", tickets)
-            return t
+        if t["id"] != ticket_id:
+            continue
+        if req.status in ("pending", "resolved"):
+            t["status"] = req.status
+            if req.status == "resolved":
+                t["resolvedBy"] = coach["id"]
+                t["resolvedByName"] = coach["name"]
+                t["resolvedAt"] = _now()
+            else:                       # mở lại -> không còn ai đứng tên đã xong
+                t["resolvedBy"] = None
+                t["resolvedByName"] = ""
+                t["resolvedAt"] = ""
+        if req.coachResponse is not None:
+            t["coachResponse"] = req.coachResponse
+            t["respondedBy"] = coach["id"]
+            t["respondedByName"] = coach["name"]
+            t["respondedAt"] = _now()
+        _save("tickets.json", tickets)
+        return t
     return JSONResponse(status_code=404, content={"error": "Không tìm thấy ticket."})
 
 

@@ -66,6 +66,7 @@ function devColor(dev){ const i = Math.max(0, S.DEVS.findIndex(d=>d.id===dev.id)
 const S = {
   stage: 'login', setupStep: 1, analyzeIndex: 0, analyzeError: '',
   user: null, role: 'student',
+  coach: null, coaches: [],        // tài khoản Lab Coach từ seed/labcoach.json
   page: 'input',                 // input | coach  (khi stage==='app' thì view điều khiển)
   groupId: null, groupStatus: 'Analyzed', coachFeedback: '', createdAt: '',
   groups: [], tickets: [], ticketFilter: 'all',
@@ -264,20 +265,38 @@ const App = {
   set(k, v){ S[k] = v; render(); },
 
   /* ---- auth & role ---- */
-  login(role){
-    S.user = role === 'coach'
-      ? { name: 'Lab Coach', role: 'coach', dept: 'Người hướng dẫn lab' }
-      : { name: 'Học viên Team B2', role: 'student', dept: 'Vin AI — Khóa 3' };
+  async login(role){
+    if (role === 'coach') {
+      // Tài khoản coach lấy từ seed/labcoach.json — id này được ghi vào ticket khi đóng.
+      try {
+        const list = await fetch('/api/coaches').then(r=>r.json());
+        S.coaches = Array.isArray(list) ? list : [];
+      } catch(e) { S.coaches = []; }
+      if (!S.coaches.length) { alert('Không đọc được seed/labcoach.json — chưa có tài khoản Lab Coach nào.'); return; }
+      S.coach = S.coaches[0];
+      S.user = { name: S.coach.name, role: 'coach', dept: 'Lab Coach #' + S.coach.id };
+    } else {
+      S.coach = null;
+      S.user = { name: 'Học viên Team B2', role: 'student', dept: 'Vin AI — Khóa 3' };
+    }
     S.role = role;
     S.stage = role === 'coach' ? 'coach' : 'setup';
     if (role === 'coach') App.loadCoachData();
     render();
   },
-  logout(){ S.user = null; S.role = 'student'; S.stage = 'login'; render(); },
-  switchRole(role){
+  selectCoach(id){ S.coach = S.coaches.find(c => String(c.id) === String(id)) || S.coach;
+    if (S.coach) S.user = { name: S.coach.name, role: 'coach', dept: 'Lab Coach #' + S.coach.id };
+    render(); },
+  logout(){ S.user = null; S.coach = null; S.role = 'student'; S.stage = 'login'; render(); },
+  async switchRole(role){
     if (!S.user) return;
+    if (role === 'coach' && !S.coach) {
+      try { S.coaches = await fetch('/api/coaches').then(r=>r.json()); } catch(e) { S.coaches = []; }
+      if (!S.coaches.length) { alert('Chưa có tài khoản Lab Coach nào trong seed/labcoach.json.'); return; }
+      S.coach = S.coaches[0];
+    }
     S.role = role; S.user.role = role;
-    if (role === 'coach') { S.stage = 'coach'; App.loadCoachData(); }
+    if (role === 'coach') { S.user = { name: S.coach.name, role:'coach', dept:'Lab Coach #' + S.coach.id }; S.stage = 'coach'; App.loadCoachData(); }
     else { S.stage = S.DEVS.length ? 'app' : 'setup'; }
     render();
   },
@@ -351,10 +370,13 @@ const App = {
   closeTicketDetail(){ S.ticketDetail = null; render(); },
   async saveTicketDetail(){
     if (!S.ticketDetail) return;
+    if (!S.coach) { alert('Cần đăng nhập Lab Coach mới cập nhật được ticket.'); return; }
     const resp = (document.getElementById('ticket-response')||{}).value ?? S.ticketEditResponse;
     try {
-      await fetch('/api/tickets/' + S.ticketDetail.id, { method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ status: S.ticketEditStatus, coachResponse: resp }) });
+      const r = await fetch('/api/tickets/' + S.ticketDetail.id, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: S.ticketEditStatus, coachResponse: resp, coachId: S.coach.id }) });
+      const d = await r.json();
+      if (d.error) { alert(d.error); return; }
       S.ticketDetail = null;
       if (S.role === 'coach' && S.stage === 'coach') await App.loadCoachData(); else await App.loadGroupTickets();
       render();
@@ -363,12 +385,16 @@ const App = {
   async toggleTicket(ev, id){
     if (ev) ev.stopPropagation();
     const t = S.tickets.find(x=>x.id===id); if (!t) return;
+    if (!S.coach) { alert('Cần đăng nhập Lab Coach mới đóng được ticket.'); return; }
     const next = t.status === 'resolved' ? 'pending' : 'resolved';
     try {
-      await fetch('/api/tickets/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ status: next }) });
-      t.status = next; render();
-    } catch(e) {}
+      const r = await fetch('/api/tickets/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: next, coachId: S.coach.id }) });
+      const d = await r.json();
+      if (d.error) { alert(d.error); return; }
+      Object.assign(t, d);      // nhận lại resolvedBy / resolvedAt từ server
+      render();
+    } catch(e) { alert('Lỗi cập nhật ticket: ' + e.message); }
   },
 
   /* ---- coach feedback on group ---- */
@@ -652,9 +678,7 @@ function fitText(score){ return score == null ? '—' : score + '%'; }
 
 function renderHeader(){
   const tabsDef = [
-    ['dashboard','Tổng quan'],['summary','Tóm tắt bài lab'],['developers','Lập trình viên'],
-    ['graph','Sơ đồ kỹ năng'],['project','Đầu việc'],['matching','Matching'],
-    ['claim','Nhận việc'],['tickets','🛟 Tickets']];
+    ['dashboard','Tổng quan'],['summary','Tóm tắt bài lab'],['graph','Sơ đồ kỹ năng']];
   const tabs = tabsDef.map(([key,label]) =>
     `<button style="border:none;background:${S.view===key?'#eef2ff':'transparent'};color:${S.view===key?'#4338ca':'#475569'};font-weight:700;font-size:12.5px;padding:9px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;" onclick="App.setView('${key}')">${label}</button>`).join('');
   return `<div style="background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;flex-wrap:wrap;row-gap:6px;padding:8px 24px;gap:12px;">
@@ -1234,6 +1258,8 @@ function renderNavbar(){
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       ${inApp && S.role==='student' ? `<button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;" onclick="App.backToSetup()">↻ Tạo phân công mới</button>` : ''}
       ${rolePill}
+      ${S.role==='coach' && S.coaches.length>1 ? `<select onchange="App.selectCoach(this.value)" style="font-size:12px;font-weight:700;padding:7px 9px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;">
+        ${S.coaches.map(c=>`<option value="${esc(c.id)}" ${S.coach&&String(S.coach.id)===String(c.id)?'selected':''}>${esc(c.name)} #${esc(c.id)}</option>`).join('')}</select>` : ''}
       <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:12px;">
         <div style="width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">${S.role==='coach'?'LC':'HV'}</div>
         <div><div style="font-size:12px;font-weight:800;line-height:1.2;">${esc(S.user.name)}</div>
@@ -1423,7 +1449,8 @@ function renderTicketList(isCoach){
           ${t.groupId?`<span style="font-family:monospace;color:#4f46e5;font-weight:700;">Nhóm #${esc(t.groupId)}</span>`:''}
           <span>🕐 ${esc(t.createdAt)}</span>
         </div>
-        ${t.coachResponse?`<div style="margin-top:7px;background:#eef2ff;border:1px solid #e0e7ff;border-radius:9px;padding:7px 10px;font-size:11.5px;color:#3730a3;"><strong>💬 Coach:</strong> ${esc(t.coachResponse)}</div>`:''}
+        ${done && t.resolvedBy?`<div style="margin-top:6px;font-size:11px;color:#047857;font-weight:700;">✓ Đã xong · ${esc(t.resolvedByName||'Lab Coach')} <span style="font-family:monospace;">#${esc(t.resolvedBy)}</span>${t.resolvedAt?' · '+esc(t.resolvedAt):''}</div>`:''}
+        ${t.coachResponse?`<div style="margin-top:7px;background:#eef2ff;border:1px solid #e0e7ff;border-radius:9px;padding:7px 10px;font-size:11.5px;color:#3730a3;"><strong>💬 ${esc(t.respondedByName||'Coach')}:</strong> ${esc(t.coachResponse)}</div>`:''}
       </div>
       <div style="flex:0 0 auto;">${done
         ? '<span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;">✓ Đã xong</span>'
@@ -1570,6 +1597,8 @@ function renderTicketDetailModal(){
         <div><span style="color:#64748b;font-weight:700;display:block;">Bài lab:</span><span style="font-weight:700;">${esc(t.labName||'—')}</span></div>
         <div><span style="color:#64748b;font-weight:700;display:block;">Thời gian:</span><span>${esc(t.createdAt)}</span></div>
       </div>
+      ${t.status==='resolved' && t.resolvedBy ? `<div style="margin-top:12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:12px;padding:11px 14px;font-size:12px;color:#065f46;">
+        ✓ <strong>Đã xử lý xong</strong> bởi ${esc(t.resolvedByName||'Lab Coach')} <span style="font-family:monospace;font-weight:800;">#${esc(t.resolvedBy)}</span>${t.resolvedAt?` lúc ${esc(t.resolvedAt)}`:''}</div>` : ''}
       <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Mô tả vấn đề từ học viên:</div>
         <div style="background:#0f172a;color:#e2e8f0;border-radius:12px;padding:13px 15px;font-size:12.5px;line-height:1.6;">${esc(t.issue)}</div></div>
       ${isCoach ? `
@@ -1630,14 +1659,13 @@ function render(){
   }
   if (S.stage === 'setup') { root.innerHTML = gateAnim(`<div>${renderNavbar()}${renderSetup()}</div>`); return; }
   if (S.stage === 'analyzing') { root.innerHTML = gateAnim(renderAnalyzing()); return; }
-  const viewHtml = S.view === 'dashboard' ? renderDashboard()
-    : S.view === 'summary' ? renderSummaryTab()
-    : S.view === 'developers' ? renderDevelopers()
+  // Tab trên header chỉ còn dashboard / summary / graph.
+  // developers và tickets vẫn vào được từ thẻ thành viên và nút Tickets ở đầu trang.
+  const viewHtml = S.view === 'summary' ? renderSummaryTab()
     : S.view === 'graph' ? renderGraph()
-    : S.view === 'project' ? renderProject()
-    : S.view === 'matching' ? renderMatching()
+    : S.view === 'developers' ? renderDevelopers()
     : S.view === 'tickets' ? renderTicketsTab()
-    : renderClaim();
+    : renderDashboard();
   root.innerHTML = gateAnim(`<div style="min-height:100vh;display:flex;flex-direction:column;">
     ${renderNavbar()}
     ${renderHeader()}
