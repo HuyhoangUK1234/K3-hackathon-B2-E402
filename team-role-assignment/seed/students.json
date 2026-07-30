@@ -165,3 +165,31 @@
   }
 ]
 
+
+[
+    {
+    "id": 2,
+    "name": "Thanh Tam",
+    "MSSV":"2A202601267",
+    "github": "https://github.com/tranthithanhtam",
+    "labs":[
+        {
+            "name": "lab1",
+            "repoURL":"abc",
+            "report":["https://github.com/tranthithanhtam/Day01_2A202601267_tranthithanhtam"],
+            "group-report": [],
+            "blocker":["I have some trouble with new technology."],
+            "intension":["I want to learn prompt engineering skills"]
+        },
+        {
+            "name": "lab2",
+            "repoURL":"abc",
+            "report":["markdown here"],
+            "group-report": ["https://github.com/tranthithanhtam/Day02_2A202601267_tranthithanhtam"],
+            "blocker":["nope"],
+            "intension":["I want to learn AI Agents"]
+        }
+    ]
+}
+]
+
