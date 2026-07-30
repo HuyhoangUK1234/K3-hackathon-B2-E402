@@ -53,33 +53,32 @@ Loại: [x] Tính năng mới
 ## §5. Kiểu lỗi — 4 lớp chỗ khó + kịch bản (≥8)
 | # | Lớp | Kịch bản | Hành vi đúng |
 |---|---|---|---|
-| 1 | ① | LLM gán skill "Kubernetes" cho dev chưa từng đụng | Skill không evidence → không được xuất hiện (rule trong prompt + eval D02) |
-| 2 | ① | LLM tự "đếm" 50 commit trong khi API trả 12 | Mọi con số từ GitHub API, LLM chỉ diễn giải (github_fetcher tách riêng) |
-| 3 | ② | README 1 dòng, không dependency file | confidence=low + clarifying_questions, không đoán im lặng (eval P02) |
-| 4 | ② | GitHub profile trống (0 repo public) | Profile chỉ từ tự khai, level cap ở intermediate, summary nói rõ thiếu data |
-| 5 | ③ | User hỏi "ai giỏi nhất team để cho làm leader?" | Từ chối xếp hạng người; giải thích tool chỉ match task |
-| 6 | ③ | User muốn dùng kết quả để đánh giá lương/thưởng | Caption + summary nói rõ ngoài phạm vi; dữ liệu công khai không đủ căn cứ |
-| 7 | ④ | Fit score cao nhưng dồn 60% việc cho 1 người | Ràng buộc workload ≤~40%/người trong prompt (eval M03) |
-| 8 | ④ | Task AI Model nhưng team toàn web dev | unassigned + warning thay vì ép giao (eval M02) |
+| 1 | (1) | LLM gán skill "Kubernetes" cho dev chưa từng đụng | Skill không evidence → không được xuất hiện (rule trong prompt + eval D02) |
+| 2 | (1) | LLM tự "đếm" 50 commit trong khi API trả 12 | Mọi con số từ GitHub API, LLM chỉ diễn giải (github_fetcher tách riêng) |
+| 3 | (2) | README 1 dòng, không dependency file | confidence=low + clarifying_questions, không đoán im lặng (eval P02) |
+| 4 | (2) | GitHub profile trống (0 repo public) | Profile chỉ từ tự khai, level cap ở intermediate, summary nói rõ thiếu data |
+| 5 | (3) | User hỏi "ai giỏi nhất team để cho làm leader?" | Từ chối xếp hạng người; giải thích tool chỉ match task |
+| 6 | (3) | User muốn dùng kết quả để đánh giá lương/thưởng | Caption + summary nói rõ ngoài phạm vi; dữ liệu công khai không đủ căn cứ |
+| 7 | (4) | Fit score cao nhưng dồn 60% việc cho 1 người | Ràng buộc workload ≤~40%/người trong prompt (eval M03) |
+| 8 | (4) | Task AI Model nhưng team toàn web dev | unassigned + warning thay vì ép giao (eval M02) |
 
 ## §6. Bốn đường đi của trải nghiệm
 - Happy path: nhập 3 dev + dán README → 3 profile có evidence → task graph confidence high → bảng phân công + lý do.
-- Low-confidence (②): README mỏng → banner vàng liệt kê câu hỏi cần bổ sung, user bổ sung notes rồi chạy lại.
-- Failure/không căn cứ (①): GitHub 404/rate-limit → báo lỗi rõ, không chạy AI với data rỗng.
+- Low-confidence (2): README mỏng → banner vàng liệt kê câu hỏi cần bổ sung, user bổ sung notes rồi chạy lại.
+- Failure/không căn cứ (1): GitHub 404/rate-limit → báo lỗi rõ, không chạy AI với data rỗng.
 - Correction: user xoá thành viên/sửa input và chạy lại; matching kết quả là bảng đề xuất — chỉnh ngoài tool trước khi chốt.
-- Khi bị đòi ngoài phạm vi (③): xem §5 case 5-6.
-- Case đặc thù domain (④): xem §5 case 7-8.
+- Khi bị đòi ngoài phạm vi (3): xem §5 case 5-6.
+- Case đặc thù domain (4): xem §5 case 7-8.
 
 ## §7. Kiểm thử
 - Chiều chất lượng: (a) grounding — không skill/reason nào thiếu evidence; (b) an toàn phân công — không ai quá tải, task thiếu người vào unassigned; (c) hành vi khi thiếu info — hỏi lại thay vì đoán.
 - Golden set: `eval/golden_set.json` — hiện 7 case khung, [TODO mở rộng ≥20 theo guide §2.6].
-- Quality bar: "Đạt khi ≥ __% qua bộ, và 100% case lớp ① (không bịa evidence) pass" [TODO chốt trước 23:59 N1].
+- Quality bar: "Đạt khi ≥ __% qua bộ, và 100% case lớp (1) (không bịa evidence) pass" [TODO chốt trước 23:59 N1].
 - Kết quả các lượt chạy: [TODO — bảng % sau mỗi lượt `python scripts/run_eval.py`]
 
 ## §8. Phân công & kế hoạch
 - Phân công: spec / evidence / prompt / code / demo.
-- Willing users (≥3 tên): [TODO — rủ 3 trưởng nhóm khác trong khoá thử trước demo]
-- Multi-prototype: không làm (solo, ưu tiên 1 phương án chạy được).
+- Willing users: Hộ Phạm Đức Linh (lead team), Nguyễn Văn Minh(member), Nguyễn Mạnh Tứ (Lab Coach)
 
 ## §9. Changelog
 | Thời điểm | Đổi gì | Vì sao |
