@@ -1,5 +1,4 @@
 [
-    
     {
         "id": 2,
         "name": "Nguyen Van Tien",
@@ -39,8 +38,8 @@
     {
         "id": 3,
         "name": "Nguyen Le Duy Hung",
-        "MSSV": "2A202601533",
-        "github": "https://github.com/duyhung-2k4/DAY01_2A202601135_NguyenLeDuyHung",
+        "MSSV": "2A202601135",
+        "github": "https://github.com/duyhung-2k4",
         "labs": [
             {
                 "name": "lab1",
@@ -54,55 +53,85 @@
                 "name": "lab2",
                 "repo_url": "https://github.com/duyhung-2k4/DAY02_2A202601135_NguyenLeDuyHung",
                 "report": [
-                    "https://github.com/duyhung-2k4/DAY02_2A202601433_NguyenVanTien/blob/main/01-individual-problem-scan/individual-report.md",
-                    "https://github.com/duyhung-2k4/DAY02_2A202601433_NguyenVanTien/blob/main/03-individual-reflection/reflection.md"
+                    "https://github.com/duyhung-2k4/DAY02_2A202601135_NguyenLeDuyHung/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/duyhung-2k4/DAY02_2A202601135_NguyenLeDuyHung/blob/main/03-individual-reflection/reflection.md"
                 ],
                 "group_report": [
                     "https://github.com/VanTienDL/DAY02_2A202601433_NguyenVanTien/blob/main/02-group-problem-statement/group-report.md"
                 ],
                 "blockers": [],
                 "intentions": [
-                    "Muốn thử làm leader"
+                    "Muốn tìm hiểu sâu hơn về BA"
                 ]
             }
         ]
     },
     {
-    "id": 4,
-    "name": "Ta Thi Nga",
-    "MSSV": "2A202601125",
-    "github": "https://github.com/ngatt-17",
-    "labs": [
-      {
-        "name": "lab1",
-        "repo_url": "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga",
-        "report": [
-          "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga#readme"
-        ],
-        "group_report": [],
-        "blocker": [
-          "Không gặp khó khăn lớn; cần ôn lại một vài khái niệm Python cơ bản"
-        ],
-        "intension": [
-          "Hoàn thiện mã nguồn và viết báo cáo chi tiết hơn cho lab tiếp theo"
+        "id": 4,
+        "name": "Ta Thi Nga",
+        "MSSV": "2A202601125",
+        "github": "https://github.com/ngatt-17",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga",
+                "report": [
+                    "https://github.com/ngatt-17/Day01_2A202601125_TaThiNga#readme"
+                ],
+                "group_report": [],
+                "blockers": [
+                    "Không gặp khó khăn lớn; cần ôn lại một vài khái niệm Python cơ bản"
+                ],
+                "intentions": [
+                    "Hoàn thiện mã nguồn và viết báo cáo chi tiết hơn cho lab tiếp theo"
+                ]
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga",
+                "report": [
+                    "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga#readme"
+                ],
+                "group_report": [
+                    "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    "Cần thêm thời gian tìm hiểu tài liệu liên quan đến nội dung lab"
+                ],
+                "intentions": [
+                    "Tìm hiểu thêm về prompt engineering và áp dụng trong lab tiếp theo"
+                ]
+            }
         ]
-      },
-      {
-        "name": "lab2",
-        "repo_url": "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga",
-        "report": [
-          "https://github.com/ngatt-17/Day02_2A202601125_TaThiNga#readme"
-        ],
-        "group_report": [
-          "https://github.com/ngatt-17/Day04_2A202601125_TaThiNga_TeamB2"
-        ],
-        "blocker": [
-          "Cần thêm thời gian tìm hiểu tài liệu liên quan đến nội dung lab"
-        ],
-        "intension": [
-          "Tìm hiểu thêm về prompt engineering và áp dụng trong lab tiếp theo"
+    },
+    {
+        "id": 5,
+        "name": "Thanh Tam",
+        "MSSV": "2A202601267",
+        "github": "https://github.com/tranthithanhtam",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/tranthithanhtam/Day01_2A202601267_tranthithanhtam",
+                "report": [],
+                "group_report": [],
+                "blockers": [
+                    "I have some trouble with new technology."
+                ],
+                "intentions": [
+                    "I want to learn prompt engineering skills"
+                ]
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/tranthithanhtam/Day02_2A202601267_tranthithanhtam",
+                "report": [],
+                "group_report": [],
+                "blockers": [],
+                "intentions": [
+                    "I want to learn AI Agents"
+                ]
+            }
         ]
-      }
-    ]
-  }
+    }
 ]
