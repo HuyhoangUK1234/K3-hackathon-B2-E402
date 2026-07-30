@@ -1,4 +1,4 @@
-# AI SPEC — Phân công vai trò team từ GitHub activity · Nhóm [XX] · Zone [X]
+# AI SPEC — Phân công vai trò team từ GitHub activity · Nhóm [B2] · Zone [E402]
  Tính năng mới
 
 ## §1. User & Job
@@ -80,7 +80,7 @@
 
 ## §8. Phân công & kế hoạch
 - Phân công: spec / evidence / prompt / code / demo.
-- Willing users: Hộ Phạm Đức Linh (lead team), Nguyễn Văn Minh(member), Nguyễn Mạnh Tứ (Lab Coach)
+- Willing users: Hồ Phạm Đức Linh (với vai trò lead team của một nhóm), Nguyễn Văn Minh(với vai trò member), Nguyễn Mạnh Tú (với vai trò Lab Coach)
 
 ## §9. Changelog
 | Thời điểm | Đổi gì | Vì sao |
