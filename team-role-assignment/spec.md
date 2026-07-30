@@ -9,24 +9,32 @@ Loại: [x] Tính năng mới
 - Core JTBD (không tên sản phẩm/AI): "Khi team mới nhận dự án, tôi muốn biết ai nên làm phần nào để không mất mấy ngày đầu tranh luận và không giao nhầm việc cho người không làm nổi."
 - Problem statement (KHÔNG chữ AI): Trưởng nhóm không biết năng lực thật của thành viên mới (chỉ biết qua tự giới thiệu), dẫn đến phân công sai, việc dồn về 1-2 người mạnh, thành viên yếu không học được gì, dự án trễ.
 - Evidence:
-  - [TODO-EVIDENCE] Khảo sát ≥20 học viên đã làm project nhóm: "Nhóm bạn có gặp vấn đề phân công sai người sai việc không?" — log toàn bộ Q&A.
+  - Khảo sát 45 học viên trong khoá học làm bài khảo sát "Khảo sát nhu cầu về ứng dụng AI trong phân chia công việc nhóm ".
   - [TODO-EVIDENCE] ≥5 quote nguyên văn từ khảo sát / Discord về pain phân công nhóm.
 
 ## §2. Impact & quyết định chọn
 - Bảng impact ≥3 ứng viên: [TODO-EVIDENCE — điền sau khảo sát]
-  | Ứng viên | Bao nhiêu người | Tần suất | Tốn gì mỗi lần | Khả thi |
-  |---|---|---|---|---|
-  | Phân công vai trò team (CHỌN) | ? | mỗi project (~2-3 lần/khoá) | 1-3 ngày tranh luận đầu dự án + rework khi giao sai | Working prototype trong hackathon |
-  | (ứng viên 2 đã cân nhắc) | ? | ? | ? | ? |
-  | (ứng viên 3 đã cân nhắc) | ? | ? | ? | ? |
-- Ứng viên ĐÃ LOẠI + vì sao: [TODO]
-- Ứng viên CHỌN + vì sao (bằng số): [TODO sau khảo sát]
+ | Ứng viên | Bao nhiêu người | Tần suất | Tốn gì mỗi lần | Khả thi |
+|---|---:|---|---|---|
+| **Khó phân công vai trò trong team (CHỌN)** | **35** | Mỗi project (~2–3 lần/khóa) | 1–3 ngày tranh luận đầu dự án, dễ giao sai người và phải phân công lại | Working prototype trong hackathon |
+| Khó chia task theo năng lực | **36** | Mỗi sprint/giai đoạn | Công việc mất cân bằng, có người quá tải hoặc quá ít việc | Có thể triển khai |
+| Khó onboarding thành viên mới | **39** | Khi có thành viên mới tham gia | Mất thời gian tìm hiểu năng lực và giao việc phù hợp | Có thể triển khai |
+
+- Ứng viên ĐÃ LOẠI:
+  - **Khó chia task theo năng lực:** Phụ thuộc vào việc xác định đúng vai trò trước, chưa phù hợp làm MVP.
+  - **Khó onboarding thành viên mới:** Chỉ phát sinh khi có thành viên mới và cần nhiều dữ liệu về năng lực hơn.
+
+- Ứng viên CHỌN: **Chọn:** Khó phân công vai trò trong team.
+**Lý do:**
+- 35/45 người khảo sát cho rằng việc phân công chưa tối ưu ảnh hưởng đến tiến độ dự án.
+- 36/45 người từng được giao công việc chưa phù hợp với năng lực.
+- 29/45 người cho biết Team Leader chủ yếu phân công dựa trên kinh nghiệm cá nhân thay vì dữ liệu.
+- Pain point này xuất hiện ở hầu hết các dự án và là nguyên nhân gốc dẫn đến các vấn đề như chia task không hợp lý và chậm tiến độ.
 
 ## §3. Giải pháp tương tự đã nghiên cứu
-- GitHub Insights / contributor graph: chỉ thống kê, không map sang vai trò + không tính nguyện vọng học. Mình khác: kết hợp evidence + nguyện vọng + workload balance.
-- LinkedIn Skill Assessment: tự khai + quiz, không nhìn code thật. Mình khác: evidence từ commit/repo thật.
-- [TODO: thêm 1 sản phẩm nữa — Pluralsight Flow / Waydev]
-
+- GitHub Insights / contributor graph: chỉ thống kê, không map sang vai trò + không tính nguyện vọng học. Hướng phát triển mới: kết hợp evidence + nguyện vọng + workload balance.
+- LinkedIn Skill Assessment: tự khai + quiz, không nhìn code thật. Hướng phát triển mới: evidence từ commit/repo thật.
+  
 ## §4. Thiết kế
 - Lát cắt MỘT CÂU: **Trưởng nhóm dự án** · **cần chia việc cho team mới lập** · **AI phân tích GitHub + tự khai của thành viên và README dự án rồi đề xuất ai làm task nào** · **nhận bảng phân công kèm Fit Score và lý do có trích dẫn bằng chứng**.
 - Non-goals (≥3): không tích hợp Jira/Trello; không train model riêng; không theo dõi tiến độ sau phân công; không xếp hạng năng lực để đánh giá/chấm điểm con người.
@@ -63,15 +71,12 @@ Loại: [x] Tính năng mới
 
 ## §7. Kiểm thử
 - Chiều chất lượng: (a) grounding — không skill/reason nào thiếu evidence; (b) an toàn phân công — không ai quá tải, task thiếu người vào unassigned; (c) hành vi khi thiếu info — hỏi lại thay vì đoán.
-- Golden set: `eval/golden_set.json` — 24 case, đủ 4 kiểu rủi ro (①6 ②4 ③2 ④6), 12 case từ quan sát thực tế (log lỗi thật 29–30/07).
-- Quality bar (ĐÃ CHỐT, không hạ): **≥75% qua bộ VÀ 0 lần AI gán skill không có evidence.**
-- Kết quả các lượt chạy (`python scripts/run_eval.py` → `eval/results.md`):
-  | Ngày | Kết quả | Bịa skill | Ghi chú |
-  |---|---|---|---|
-  | 30/07/2026 | 21/24 (87.5%) — ĐẠT | 0 | Fail: P01 (quá thận trọng), M03 (dồn 54%), M04 (LLM trả sai id — guardrail code đã chặn ở production) |
+- Golden set: `eval/golden_set.json` — hiện 7 case khung, [TODO mở rộng ≥20 theo guide §2.6].
+- Quality bar: "Đạt khi ≥ __% qua bộ, và 100% case lớp ① (không bịa evidence) pass" [TODO chốt trước 23:59 N1].
+- Kết quả các lượt chạy: [TODO — bảng % sau mỗi lượt `python scripts/run_eval.py`]
 
 ## §8. Phân công & kế hoạch
-- Phân công: [1 người làm tất — solo]: spec / evidence / prompt / code / demo.
+- Phân công: spec / evidence / prompt / code / demo.
 - Willing users (≥3 tên): [TODO — rủ 3 trưởng nhóm khác trong khoá thử trước demo]
 - Multi-prototype: không làm (solo, ưu tiên 1 phương án chạy được).
 
