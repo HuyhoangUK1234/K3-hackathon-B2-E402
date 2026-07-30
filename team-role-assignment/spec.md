@@ -79,7 +79,15 @@
 - Kết quả các lượt chạy: [TODO — bảng % sau mỗi lượt `python scripts/run_eval.py`]
 
 ## §8. Phân công & kế hoạch
-- Phân công: spec / evidence / prompt / code / demo.
+- Phân công:
+
+  | Hạng mục | Thành viên phụ trách |
+|----------|----------------------|
+| **Spec** (Đặc tả hệ thống, kiến trúc, luồng hoạt động) | Trần Thị Thanh Tâm, Tạ Thị Nga |
+| **Evidence** (Khảo sát, pain point, phân tích dữ liệu, tài liệu tham khảo) | Trần Thị Thanh Tâm, Tạ Thị Nga |
+| **Prompt** (Thiết kế prompt, AI workflow, schema) | Nguyễn Duy Hải Bằng, Nguyễn Văn Tiến |
+| **Code** (Phát triển hệ thống, API, AI pipeline, tích hợp) | Nguyễn Duy Hải Bằng, Nguyễn Văn Tiến |
+| **Demo** (Chuẩn bị dữ liệu mẫu, kịch bản demo, trình diễn hệ thống) | Huỳnh Hoàng Việt |
 - Willing users: Hồ Phạm Đức Linh (với vai trò lead team của một nhóm), Nguyễn Văn Minh(với vai trò member), Nguyễn Mạnh Tú (với vai trò Lab Coach)
 
 ## §9. Changelog
