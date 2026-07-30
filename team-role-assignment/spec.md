@@ -72,12 +72,9 @@ Loại: [x] Tính năng mới
 
 ## §7. Kiểm thử
 - Chiều chất lượng: (a) grounding — không skill/reason nào thiếu evidence; (b) an toàn phân công — không ai quá tải, task thiếu người vào unassigned; (c) hành vi khi thiếu info — hỏi lại thay vì đoán.
-- Golden set: `eval/golden_set.json` — 24 case, đủ 4 kiểu rủi ro (①6 ②4 ③2 ④6), 12 case từ quan sát thực tế (log lỗi thật 29–30/07).
-- Quality bar (ĐÃ CHỐT, không hạ): **≥75% qua bộ VÀ 0 lần AI gán skill không có evidence.**
-- Kết quả các lượt chạy (`python scripts/run_eval.py` → `eval/results.md`):
-  | Ngày | Kết quả | Bịa skill | Ghi chú |
-  |---|---|---|---|
-  | 30/07/2026 | 21/24 (87.5%) — ĐẠT | 0 | Fail: P01 (quá thận trọng), M03 (dồn 54%), M04 (LLM trả sai id — guardrail code đã chặn ở production) |
+- Golden set: `eval/golden_set.json` — hiện 7 case khung, [TODO mở rộng ≥20 theo guide §2.6].
+- Quality bar: "Đạt khi ≥ __% qua bộ, và 100% case lớp ① (không bịa evidence) pass" [TODO chốt trước 23:59 N1].
+- Kết quả các lượt chạy: [TODO — bảng % sau mỗi lượt `python scripts/run_eval.py`]
 
 ## §8. Phân công & kế hoạch
 - Phân công: spec / evidence / prompt / code / demo.
