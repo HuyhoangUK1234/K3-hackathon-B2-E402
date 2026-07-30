@@ -92,5 +92,14 @@
  Willing users: Hồ Phạm Đức Linh (với vai trò lead team của một nhóm), Nguyễn Văn Minh(với vai trò member), Nguyễn Mạnh Tú (với vai trò Lab Coach)
 
 ## §9. Changelog
-| Thời điểm | Đổi gì | Vì sao |
-| 2026-07-30 | Khởi tạo spec nháp + code 3 luồng + eval khung | bắt đầu dự án |
+## §9. Changelog
+
+| Thời điểm (Giờ Việt Nam) | Đổi gì | Vì sao (trỏ về phản hồi / trường hợp) |
+|--------------------------|--------|----------------------------------------|
+| 29/07/2026 9:00 | Khởi tạo package hackathon: đề bài, guide (5 giai đoạn), template spec, rubric, data pack ban đầu | Bản phát hành ban đầu của gói hackathon (commit `65c7f3f`); tinh chỉnh văn phong và golden set (commit `790f9a7`). |
+| 30/07/2026 9:30 | Thêm quy định bảo mật dữ liệu cho data packs; loại bỏ một số data pack; thêm 6 transcript sạch | Bổ sung chính sách bảo mật dữ liệu (commit `21ba1c8`); thêm transcript sạch phục vụ golden set/evidence (commit `aa31ef3`). |
+| 30/07/2026 11:00 | Cấu trúc lại rubric (25 điểm checkpoint + 75 điểm artifact); ẩn tên giảng viên/TA/guest trong transcripts | Điều chỉnh rubric (commit `288a42d`); ẩn danh dữ liệu để tuân thủ quy định bảo mật (commit `e604c90`). |
+| 30/07/2026 14:00 | Thêm hướng dẫn chạy (`HUONG-DAN-CHAY.md`); bổ sung UI AI Lab Team và CP3 eval (24 test case) | Hướng dẫn cho người mới (commit `02f71fd`); xây dựng UI, pipeline và bộ đánh giá CP3 (commit `84963ec`). |
+| 30/07/2026 17:00 | Sửa UI/UX (hover flicker), khôi phục kết quả eval và xử lý merge conflict README | Cải thiện trải nghiệm giao diện (commit `c0ce8bd`); khôi phục kết quả eval sau merge (commit `9c192e0`). |
+| 30/07/2026 20:00 | Cập nhật kịch bản lỗi (error cases) và experience paths trong spec | Làm rõ luồng người dùng và các trường hợp kiểm thử/validation (commit `5922b5e`). |
+| 30/07/2026 21:00 | Thêm template dữ liệu trong thư mục `seed` | Chuẩn hóa dữ liệu mẫu phục vụ phát triển và kiểm thử (commit `68e5f18`). |
