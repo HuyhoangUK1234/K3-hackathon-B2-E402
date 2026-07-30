@@ -1,0 +1,151 @@
+# 📖 Hướng dẫn chạy AI Lab Team (cho người mới hoàn toàn)
+
+Ứng dụng **AI Lab Team**: nhập tên + GitHub của các thành viên nhóm và link repo bài lab → AI tự đọc GitHub thật + README bài lab → đề xuất **ai làm phần nào**, kèm điểm phù hợp (Fit Score), bằng chứng, radar kỹ năng, và hệ thống ticket hỏi Lab Coach.
+
+> Không cần biết lập trình vẫn chạy được — cứ làm đúng từng bước bên dưới.
+
+---
+
+## 1. Cần chuẩn bị gì?
+
+| Thứ cần có | Để làm gì | Lấy ở đâu |
+|---|---|---|
+| **Python 3.10+** | Chạy ứng dụng | [python.org/downloads](https://www.python.org/downloads/) — khi cài nhớ tick ô **"Add Python to PATH"** |
+| **OpenAI API key** | AI phân tích (bắt buộc) | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key |
+| **GitHub token** | Đọc GitHub không bị giới hạn (nên có) | [github.com/settings/tokens](https://github.com/settings/tokens) → Generate new token (classic) → không cần tick quyền gì → Generate |
+| **Git** (nếu tải bằng lệnh) | Tải mã nguồn | [git-scm.com](https://git-scm.com/) — hoặc bấm nút **Code → Download ZIP** trên GitHub, khỏi cần Git |
+
+---
+
+## 2. Tải mã nguồn
+
+**Cách 1 — dùng Git (khuyên dùng):** mở **Command Prompt** (bấm phím Windows, gõ `cmd`, Enter) rồi chạy:
+
+```bash
+git clone https://github.com/HuyhoangUK1234/K3-hackathon-B2-E402.git
+cd K3-hackathon-B2-E402\team-role-assignment
+```
+
+**Cách 2 — không dùng Git:** vào trang GitHub của repo → nút xanh **Code** → **Download ZIP** → giải nén → mở Command Prompt tại thư mục `team-role-assignment` (vào thư mục đó trong File Explorer, gõ `cmd` vào thanh địa chỉ, Enter).
+
+---
+
+## 3. Cài đặt (chỉ làm 1 lần)
+
+Chạy lần lượt từng dòng trong Command Prompt (đang đứng ở thư mục `team-role-assignment`):
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+- Dòng 1: tạo "hộp riêng" chứa thư viện (venv) — không đụng gì tới máy bạn.
+- Dòng 2: bật hộp đó lên (đầu dòng lệnh sẽ hiện `(.venv)`).
+- Dòng 3: cài thư viện, chờ 1-2 phút.
+
+> 💡 Trên Mac/Linux: thay dòng 2 bằng `source .venv/bin/activate`.
+
+---
+
+## 4. Điền chìa khóa API (bước quan trọng nhất)
+
+1. Chép file mẫu thành file thật:
+   ```bash
+   copy .env.example .env
+   ```
+2. Mở file `.env` bằng Notepad, điền 2 dòng:
+   ```
+   OPENAI_API_KEY=sk-...key-cua-ban...
+   GITHUB_TOKEN=ghp-...token-cua-ban...
+   ```
+   - `OPENAI_API_KEY`: **bắt buộc** — không có thì AI không phân tích được.
+   - `GITHUB_TOKEN`: nên có — không có thì GitHub chỉ cho đọc 60 lượt/giờ, phân tích 4 người là gần hết.
+
+> ⚠️ **Tuyệt đối không** gửi file `.env` cho ai hay đưa lên mạng — key này trừ tiền tài khoản của bạn.
+
+---
+
+## 5. Chạy ứng dụng
+
+```bash
+uvicorn server:app --port 8000
+```
+
+Thấy dòng `Uvicorn running on http://127.0.0.1:8000` là thành công. Mở trình duyệt vào:
+
+👉 **http://localhost:8000**
+
+Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
+
+> Lần sau chạy lại chỉ cần 2 lệnh: `.venv\Scripts\activate` rồi `uvicorn server:app --port 8000`.
+
+---
+
+## 6. Dùng như thế nào?
+
+### 👤 Vai trò Học viên (người làm bài lab)
+
+1. Màn đăng nhập → bấm **"Đăng nhập với vai trò Học viên"** (demo, không cần mật khẩu).
+2. **Bước 1**: dán link repo bài lab (đã điền sẵn repo mẫu Day04 của Team B2). Chỉ cần repo — AI tự đọc README và các file cần thiết.
+3. **Bước 2**: điền các thành viên — chỉ cần **tên + GitHub username** là đủ (đã điền sẵn 4 người Team B2 để thử, có thể xoá/sửa).
+4. Bấm **"Đưa cho AI phân tích"** → chờ 1-2 phút (AI đọc GitHub thật + gọi OpenAI thật).
+5. Xem kết quả qua các tab:
+   - **Tổng quan** — ai làm phần nào (tô màu theo người), thanh % khối lượng, bảng "Dự án cần gì — ai có?".
+   - **Tóm tắt bài lab** — AI tóm tắt đề bài + mục tiêu, liệt kê file đã tự đọc.
+   - **Lập trình viên** — hồ sơ từng người: radar kỹ năng, số commit/PR thật, bằng chứng cho từng skill.
+   - **Matching** — kéo thả để tự chỉnh phân công; bấm vào thẻ xem AI giải thích vì sao.
+   - **🛟 Tickets** — bấm **Raise Ticket** khi kẹt, Lab Coach sẽ thấy và trả lời.
+
+### 🛡️ Vai trò Lab Coach (người hướng dẫn)
+
+1. Đăng nhập **Lab Coach** (hoặc gạt nút chuyển vai trò trên thanh trên cùng).
+2. **Danh sách nhóm lab** — mọi nhóm đã phân tích: vòng tròn tỉ lệ cân bằng (xanh >70% / vàng 50-70% / đỏ <50%), điểm fit. Bấm vào nhóm để xem chi tiết, rồi bấm **"Đánh giá từ Coach"** để phê duyệt / yêu cầu phân công lại + ghi nhận xét (học viên sẽ thấy).
+3. **Tickets hỗ trợ** — lọc Chưa xong/Đã xong, bấm dấu ✓ để đánh dấu xong nhanh, hoặc bấm vào ticket để viết phản hồi.
+
+---
+
+## 7. (Tuỳ chọn) Chạy bộ kiểm thử chất lượng AI
+
+```bash
+python scripts/run_eval.py
+```
+
+Chạy 24 câu thử (có tình huống bẫy: dữ liệu thiếu, câu mơ hồ, đòi xếp hạng người, đòi đáp án...) qua đúng AI của sản phẩm, in PASS/FAIL từng câu và ghi bảng vào `eval/results.md`. Chuẩn đạt của nhóm: **≥75% và AI không được bịa skill không có bằng chứng lần nào**.
+
+---
+
+## 8. Lỗi thường gặp
+
+| Hiện tượng | Nguyên nhân | Cách sửa |
+|---|---|---|
+| `python` không nhận lệnh | Chưa cài Python / quên tick "Add to PATH" | Cài lại Python, tick **Add Python to PATH** |
+| Cảnh báo "GitHub API bị rate limit" | Chưa có `GITHUB_TOKEN` trong `.env` | Tạo token (mục 1), điền vào `.env`, **tắt app chạy lại** |
+| Phân tích thất bại, báo lỗi key | `OPENAI_API_KEY` sai/thiếu | Kiểm tra lại `.env`, key phải bắt đầu bằng `sk-` |
+| Sửa `.env` rồi vẫn lỗi | App chỉ đọc `.env` lúc khởi động | `Ctrl+C` tắt app, chạy lại `uvicorn server:app --port 8000` |
+| Port 8000 bận | Có app khác đang chiếm | Đổi lệnh thành `--port 8080` rồi vào `localhost:8080` |
+| Thành viên 0 commit, không skill | GitHub username sai chính tả | Kiểm tra lại username trên github.com |
+| Chữ tiếng Việt trong cửa sổ lệnh bị lỗi | Bảng mã Windows | Kệ nó — chỉ là log, giao diện web vẫn hiển thị đúng |
+
+---
+
+## 9. Ứng dụng hoạt động ra sao? (đọc thêm)
+
+```
+Bạn điền: tên + GitHub username + link repo bài lab
+        │
+        ▼
+[Luồng 1] Đọc GitHub THẬT từng người (commit, PR, ngôn ngữ — số liệu từ API, AI không tự đếm)
+        → hồ sơ kỹ năng, mỗi skill kèm bằng chứng, không có bằng chứng thì không được ghi
+        │
+[Luồng 2] AI agent tự đọc README + chọn file .md cần thiết trong repo
+        → tóm tắt bài lab + danh sách phần việc (Task Graph)
+        │
+[Luồng 3] Ghép người × việc → Fit Score + lý do trích dẫn bằng chứng
+        → guardrail bằng code: không ai bị dồn việc, ai cũng có việc
+        │
+        ▼
+Kết quả chỉ là ĐỀ XUẤT — nhóm trưởng/Lab Coach duyệt và chỉnh mới chốt.
+```
+
+Nguyên tắc an toàn: thiếu dữ liệu thì AI **hỏi lại** chứ không đoán; không xếp hạng "ai giỏi hơn ai"; mọi con số đều từ GitHub thật.
