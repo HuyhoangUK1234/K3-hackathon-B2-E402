@@ -92,12 +92,13 @@ Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
    - Muốn khai thêm năng lực thì bấm **+ Chọn** ở ô *Kỹ năng đang có* / *Kỹ năng muốn học* rồi tick trong danh mục chuẩn của khoá (24 kỹ năng, lấy từ `seed/skills.json`). **Không gõ tay** — chọn tag để tránh cảnh "NextJS" và "Next.js" bị coi là hai kỹ năng khác nhau.
    - Công nghệ ngoài danh mục (Unity, Rust…) thì điền ở ô **Công nghệ khác**.
 4. Bấm **"Đưa cho AI phân tích"** → chờ 1-2 phút (AI đọc GitHub thật + gọi OpenAI thật).
-5. Xem kết quả qua các tab:
+5. **Bước 3 — trước khi AI phân công**: app dừng lại, hiện **radar năng lực nhóm so với bài lab** và danh sách **kỹ năng cả nhóm còn hổng**. Với mỗi kỹ năng, chọn ai sẽ nhận học (người từng khai "muốn học" được gợi ý sẵn) rồi bấm **Phân công với lựa chọn này** — AI sẽ ưu tiên giao việc đó cho đúng người ấy. Không muốn chọn thì bấm **Bỏ qua, để AI tự quyết**.
+6. Xem kết quả qua các tab:
    - **Tổng quan** — mặc định hiện gọn: ai làm phần nào + thanh % khối lượng. Cần xem sâu thì bấm **"Xem chi tiết"** để mở mô tả việc, cảnh báo của AI và bảng "Dự án cần gì — ai có?".
    - **Bảng việc** — kéo thẻ việc sang cột người khác để đổi người làm; bấm nhãn trạng thái để đổi *Chưa làm → Đang làm → Xong*. Dùng thay Jira cho nhóm nhỏ; thay đổi lưu cho cả nhóm và Lab Coach.
    - **Việc của tôi** — chọn mình là ai ở góc phải, xem việc còn trống để nhận hoặc trả lại việc.
    - **Tóm tắt bài lab** — AI tóm tắt đề bài + mục tiêu, liệt kê file đã tự đọc.
-   - **Sơ đồ kỹ năng** — 2 chế độ: **Ma trận** (bảng người × kỹ năng, kèm 4 con số: bài lab cần bao nhiêu trục, bao nhiêu trục đã đủ người, trục nào chỉ 1 người gánh, trục nào chưa ai làm được) và **Sơ đồ luồng** (đồ thị người → kỹ năng → việc).
+   - **Sơ đồ kỹ năng** — 2 chế độ: **Ma trận** (radar nhóm-so-với-bài-lab + bảng người × kỹ năng, kèm 4 con số: bài lab cần bao nhiêu trục, bao nhiêu trục đã đủ người, trục nào chỉ 1 người gánh, trục nào chưa ai làm được) và **Sơ đồ luồng** (đồ thị người → kỹ năng → việc).
    - Bấm vào thẻ thành viên ở Tổng quan để mở hồ sơ chi tiết: radar kỹ năng, số commit/PR thật, bằng chứng cho từng kỹ năng.
    - **🛟 Tickets** — bấm **Raise Ticket** khi kẹt, Lab Coach sẽ thấy và trả lời.
    - **💬 Trợ lý AI** (nút tròn góc dưới phải) — nhớ được các lượt hỏi trước trong cùng phiên nên hỏi nối tiếp kiểu "còn người đó thì sao?" vẫn hiểu; bấm **Hội thoại mới** để xoá bộ nhớ. Trợ lý chỉ trả lời dựa trên dữ liệu đang hiển thị, không có dữ liệu thì nói thẳng là không có.
@@ -148,8 +149,12 @@ Bạn điền: tên + GitHub username + link repo bài lab
 [Luồng 2] AI agent tự đọc README + chọn file .md cần thiết trong repo
         → tóm tắt bài lab + danh sách phần việc (Task Graph)
         │
+[Dừng lại hỏi người] Kỹ năng nào cả nhóm còn hổng? Ai nhận học phần đó?
+        → quyết định của nhóm được đưa vào bước ghép, AI không tự quyết thay
+        │
 [Luồng 3] Ghép người × việc → Fit Score + lý do trích dẫn bằng chứng
-        → guardrail bằng code: không ai bị dồn việc, ai cũng có việc
+        → guardrail bằng code: ai cũng có việc; không ai giữ quá 50% khối lượng
+          (chia không nổi thì nói thẳng lý do chứ không giấu)
         │
         ▼
 Kết quả chỉ là ĐỀ XUẤT — nhóm trưởng/Lab Coach duyệt và chỉnh mới chốt.

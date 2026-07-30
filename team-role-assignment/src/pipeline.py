@@ -67,6 +67,10 @@ MỤC TIÊU (theo thứ tự):
    - Không ai nhận quá ~40% tổng estimate_days. Thà giao task cho người fit thấp hơn một chút
      (kèm skills_to_learn) còn hơn dồn việc cho 1-2 người.
 3. Nếu chênh fit nhỏ (<10 điểm), ưu tiên người có wantLearn khớp task và readiness cao — ghi skills_to_learn.
+4. Nếu payload có "volunteers": nhóm ĐÃ CHỐT ai nhận học kỹ năng còn thiếu. Task cần kỹ năng đó
+   phải giao cho đúng người ấy (trừ khi làm họ vượt trần khối lượng), fit_score chấm theo năng lực
+   thật chứ không cộng điểm ảo, reason nói rõ "nhóm phân công người này học <kỹ năng>",
+   và liệt kê kỹ năng đó trong skills_to_learn.
 
 QUY TẮC:
 - reason PHẢI trích dẫn evidence cụ thể từ hồ sơ (số commit, repo, ngôn ngữ, tự khai). Không bịa.
@@ -150,6 +154,78 @@ def _rebalance(devs: list[dict], tasks: list[dict], assignments: dict, fit_matri
     return notes
 
 
+WORKLOAD_CAP = 0.50     # không ai giữ quá 50% tổng ngày công — chốt bằng code, không nhờ prompt
+
+
+def _cap_workload(devs: list[dict], tasks: list[dict], assignments: dict,
+                  fit_matrix: dict, cap: float = WORKLOAD_CAP) -> list[str]:
+    """Chuyển việc khỏi người đang gánh quá `cap` cho tới khi không ai vượt trần.
+
+    Prompt đã yêu cầu cân bằng nhưng LLM vẫn vượt (case M03 trong eval), nên chặn
+    ở tầng code. Mỗi lần chuyển chọn việc mà người nhận hợp nhất trong số việc của
+    người đang quá tải, và chỉ chuyển khi thực sự làm giảm mức lệch.
+    """
+    notes: list[str] = []
+    task_by_id = {t["id"]: t for t in tasks}
+    days = {t["id"]: (t.get("estimateDays") or 0) for t in tasks}
+    total = sum(days.get(tid, 0) for tid, did in assignments.items() if did)
+    if total <= 0 or len(devs) < 2:
+        return notes
+
+    def load_of(did: str) -> float:
+        return sum(days.get(tid, 0) for tid, d in assignments.items() if d == did)
+
+    for _ in range(len(tasks) * 2):                 # trần vòng lặp: không kẹt vô hạn
+        loads = {d["id"]: load_of(d["id"]) for d in devs}
+        over_id = max(loads, key=loads.get)
+        if loads[over_id] / total <= cap:
+            break
+        movable = [tid for tid, did in assignments.items() if did == over_id]
+        if len(movable) <= 1:                       # còn đúng 1 việc thì không lấy nốt
+            break
+        receiver = min((d for d in devs if d["id"] != over_id),
+                       key=lambda d: loads[d["id"]])
+        rid = receiver["id"]
+        # Chỉ nhận nước đi làm GIẢM mức gánh nặng nhất. Việc chia theo ngày công là
+        # số nguyên lát, nhiều khi không tồn tại cách chia nào dưới trần (2 người,
+        # việc to) — khi đó vẫn đi tới thế cân nhất có thể rồi cảnh báo.
+        cand = []
+        for tid in movable:
+            new_max = max(loads[over_id] - days.get(tid, 0), loads[rid] + days.get(tid, 0),
+                          *[loads[d["id"]] for d in devs if d["id"] not in (over_id, rid)] or [0])
+            if new_max < loads[over_id] - 1e-9:
+                cand.append((new_max, -_overlap_score(task_by_id[tid], receiver),
+                             days.get(tid, 0), tid))
+        if not cand:
+            break
+        cand.sort()
+        pick = cand[0][3]
+        over_name = next(x["name"] for x in devs if x["id"] == over_id)
+        assignments[pick] = receiver["id"]
+        score = _overlap_score(task_by_id[pick], receiver)
+        fit_matrix.setdefault(pick, {})[receiver["id"]] = {
+            "score": score,
+            "reason": (f"Guardrail trần khối lượng {int(cap*100)}%: {over_name} đang giữ "
+                       f"{loads[over_id]/total:.0%} tổng ngày công nên chuyển việc này sang "
+                       f"{receiver['name']}. Fit ước tính theo độ trùng kỹ năng + readiness "
+                       f"{receiver.get('readiness', 5)}/10 — nhóm nên xem lại trước khi chốt."),
+            "skillsToLearn": [s for s in task_by_id[pick]["skills"]
+                              if s not in (receiver.get("skills") or {})],
+        }
+        notes.append(f"Đã chuyển '{task_by_id[pick]['name']}' từ {over_name} sang "
+                     f"{receiver['name']} vì {over_name} vượt trần {int(cap*100)}% khối lượng.")
+
+    final = {d["id"]: load_of(d["id"]) for d in devs}
+    worst_id = max(final, key=final.get)
+    worst = final[worst_id] / total
+    if worst > cap:
+        worst_name = next(x["name"] for x in devs if x["id"] == worst_id)
+        notes.append(f"Không chia được dưới trần {int(cap*100)}%: {worst_name} vẫn giữ "
+                     f"{worst:.0%} khối lượng vì nhóm chỉ có {len(devs)} người và các đầu việc "
+                     f"chia không đều được. Nhóm nên tách nhỏ đầu việc lớn hoặc bàn lại phạm vi.")
+    return notes
+
+
 def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
     """Flow 1 LLM step — same prompt the app uses; also called by eval."""
     payload = {"github_data": gh.model_dump(), "self_reported": self_reported}
@@ -201,8 +277,12 @@ def match_ui(match_payload: dict) -> UIMatchResult:
                      temperature=0.3, max_tokens=2000)
 
 
-def analyze_all(setup: dict, members: list[dict]) -> dict:
-    """Run the 3 flows and assemble the UI payload. Raises on LLM/config errors."""
+def analyze_prepare(setup: dict, members: list[dict]) -> dict:
+    """Luồng 1 + 2: hồ sơ thành viên và Task Graph. CHƯA phân công.
+
+    Tách ra để trước khi tốn lượt matching, người dùng còn nhìn được "kỹ năng nào
+    cả nhóm chưa ai có" và chỉ định ai sẽ nhận học — thông tin đó đưa vào Luồng 3.
+    """
     # ---- Flow 1: per-member GitHub fetch + LLM profile ----
     # Các thành viên độc lập nhau -> chạy song song. Tuần tự thì thời gian cộng dồn
     # theo số người (đo được ~12.5s/người); song song thì bằng người chậm nhất.
@@ -357,7 +437,52 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         "confidence": proj.confidence, "clarifyingQuestions": proj.clarifying_questions,
     }
 
-    # ---- Flow 3: matching ----
+    return {"devs": devs, "project": project, "tasks": tasks, "labs": labs,
+            "ghErrors": gh_errors, "skillGaps": skill_gaps(devs, tasks),
+            "skillCatalog": {sid: meta["label"] for sid, meta in catalog().items()}}
+
+
+GAP_LEVEL = 40          # dưới mức này coi như chưa làm được việc thật
+WEAK_LEVEL = 60         # 40-59: làm được nhưng phải học thêm
+
+
+def skill_gaps(devs: list[dict], tasks: list[dict]) -> list[dict]:
+    """Kỹ năng bài lab đòi mà cả nhóm còn yếu/chưa có. Thuần code, không gọi LLM."""
+    need: dict[str, int] = {}
+    for t in tasks:
+        for s in t.get("skills") or []:
+            need[s] = need.get(s, 0) + 1
+    out = []
+    for sid, count in need.items():
+        levels = {d["id"]: (d["skills"] or {}).get(sid, 0) for d in devs}
+        best_id = max(levels, key=levels.get) if levels else None
+        best = levels.get(best_id, 0) if best_id else 0
+        if best >= WEAK_LEVEL:
+            continue
+        # ai muốn học đúng trục này thì gợi ý sẵn — không tự quyết thay người dùng
+        volunteers = [d["id"] for d in devs if sid in (d.get("wantLearnIds") or [])]
+        out.append({
+            "skill": sid, "label": label(sid), "taskCount": count,
+            "best": best, "bestDevId": best_id if best > 0 else None,
+            "status": "thiếu" if best < GAP_LEVEL else "yếu",
+            "suggested": volunteers,
+            "taskNames": [t["name"] for t in tasks if sid in (t.get("skills") or [])],
+        })
+    out.sort(key=lambda g: (g["best"], -g["taskCount"]))
+    return out
+
+
+def analyze_match(draft: dict, volunteers: dict | None = None) -> dict:
+    """Luồng 3: phân công + guardrail. draft là kết quả analyze_prepare().
+
+    volunteers: {skill_id: developer_id} — người dùng đã chỉ định ai nhận học kỹ năng
+    nhóm còn thiếu. Đây là quyết định của con người, AI chỉ tôn trọng nó khi ghép.
+    """
+    devs, tasks = draft["devs"], draft["tasks"]
+    gh_errors = list(draft.get("ghErrors") or [])
+    valid_dev = {d["id"] for d in devs}
+    vol = {k: v for k, v in (volunteers or {}).items() if v in valid_dev}
+
     match_payload = {
         "developers": [{
             "id": d["id"], "name": d["name"], "roleSuited": d["roleSuited"],
@@ -369,6 +494,11 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         "tasks": [{"id": t["id"], "name": t["name"], "required_skills": t["skills"],
                    "difficulty": t["difficulty"], "estimate_days": t["estimateDays"]} for t in tasks],
     }
+    if vol:
+        match_payload["volunteers"] = [
+            {"skill": sid, "developer_id": did,
+             "note": "Nhóm đã chốt người này nhận học kỹ năng đang thiếu"}
+            for sid, did in vol.items()]
     mr = match_ui(match_payload)
 
     valid_dev = {d["id"] for d in devs}
@@ -387,6 +517,7 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
     # profile) must end up with >=1 task. Move the best-overlapping task from
     # the most loaded dev.
     rebalance_notes = _rebalance(devs, tasks, assignments, fit_matrix)
+    cap_notes = _cap_workload(devs, tasks, assignments, fit_matrix)
 
     coverage_rows = []
     for c in mr.skill_coverage:
@@ -395,15 +526,22 @@ def analyze_all(setup: dict, members: list[dict]) -> dict:
         coverage_rows.append(row)
 
     return {
-        "devs": devs, "project": project, "tasks": tasks, "labs": labs,
+        "devs": devs, "project": draft["project"], "tasks": tasks, "labs": draft["labs"],
         "fitMatrix": fit_matrix, "assignments": assignments,
-        "warnings": mr.warnings + gh_errors + rebalance_notes,
+        "warnings": mr.warnings + gh_errors + rebalance_notes + cap_notes,
         "workloadNotes": mr.workload_notes,
         "unassignedTaskIds": [t for t in mr.unassigned_task_ids if t in valid_task],
         "skillCoverage": coverage_rows,
+        "skillGaps": draft.get("skillGaps", []),
+        "volunteers": vol,
         # Nhãn tiếng Việt cho từng trục — UI hiển thị label, dữ liệu vẫn là id.
         "skillCatalog": {sid: meta["label"] for sid, meta in catalog().items()},
     }
+
+
+def analyze_all(setup: dict, members: list[dict], volunteers: dict | None = None) -> dict:
+    """Chạy cả 3 luồng một lượt (giữ cho các chỗ gọi cũ và test)."""
+    return analyze_match(analyze_prepare(setup, members), volunteers)
 
 
 MAX_CHAT_TURNS = 8      # 8 lượt gần nhất là đủ để hiểu "còn người đó thì sao?" mà prompt không phình

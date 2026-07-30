@@ -79,6 +79,8 @@ const S = {
   skillQuery: '',
   graphMode: 'matrix',           // matrix | flow
   saveError: '',                 // lỗi lưu phân công lên server, hiện banner đỏ
+  draftId: null, gaps: [], gapPick: {},   // màn chốt "ai học kỹ năng nhóm còn thiếu"
+  matching: false,
   showDetail: false,             // màn kết quả: mặc định gọn, bật mới hiện chi tiết
   view: 'dashboard', selectedDevId: null, currentUserId: null,
   devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
@@ -370,6 +372,8 @@ const App = {
     S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
     S.SKILL_COVERAGE = data.skillCoverage || [];
     S.SKILL_CATALOG = data.skillCatalog || {};
+    S.gaps = data.skillGaps || S.gaps || [];
+    S.gapPick = data.volunteers || S.gapPick || {};
     S.taskStatus = data.taskStatus || {};
     S.unassignedTaskIds = data.unassignedTaskIds || [];
     S.groupId = data.groupId || null; S.groupStatus = data.status || 'Analyzed';
@@ -512,20 +516,49 @@ const App = {
       if (S.analyzeIndex < ANALYZE_LABELS.length - 1) { S.analyzeIndex++; render(); }
     }, 2600);
     try {
-      const resp = await fetch('/api/analyze', {
+      // Luồng 1+2 trước. Chưa tốn lượt matching -> còn kịp hỏi nhóm về kỹ năng thiếu.
+      const resp = await fetch('/api/analyze/prepare', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ setup: S.setup, members: filled }),
       });
       const data = await resp.json();
       clearInterval(timer);
       if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
-      App.applyPayload(data);
-      S.analyzeIndex = ANALYZE_LABELS.length; render();
-      App.loadGroupTickets();
-      setTimeout(() => { S.stage = 'app'; S.view = 'dashboard'; render(); }, 420);
+      S.draftId = data.draftId;
+      S.DEVS = data.devs; S.TASKS = data.tasks; S.LABS = data.labs; S.PROJECT = data.project;
+      S.SKILL_CATALOG = data.skillCatalog || {};
+      S.gaps = data.skillGaps || [];
+      S.gapPick = {};
+      (S.gaps || []).forEach(g => { if (g.suggested && g.suggested.length) S.gapPick[g.skill] = g.suggested[0]; });
+      S.warnings = data.ghErrors || [];
+      S.analyzeIndex = ANALYZE_LABELS.length;
+      S.stage = S.gaps.length ? 'gaps' : 'app';
+      if (!S.gaps.length) { await App.runMatching(); return; }
+      render();
     } catch (e) {
       clearInterval(timer);
       S.stage = 'setup'; S.setupStep = 1; S.analyzeError = String(e.message || e); render();
+    }
+  },
+
+  setGapPick(skill, devId){ if (devId) S.gapPick[skill] = devId; else delete S.gapPick[skill]; render(); },
+  skipGaps(){ S.gapPick = {}; App.runMatching(); },
+
+  async runMatching(){
+    S.matching = true; S.stage = 'gaps'; render();
+    try {
+      const resp = await fetch('/api/analyze/match', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ draftId: S.draftId, volunteers: S.gapPick }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+      App.applyPayload(data);
+      S.matching = false; S.stage = 'app'; S.view = 'dashboard'; render();
+      App.loadGroupTickets();
+    } catch (e) {
+      S.matching = false; S.stage = 'setup'; S.setupStep = 1;
+      S.analyzeError = String(e.message || e); render();
     }
   },
 
@@ -608,6 +641,61 @@ function avatarStyle(hue, px, fs){
   return `width:${px}px;height:${px}px;border-radius:50%;background:oklch(0.93 0.05 ${hue});color:oklch(0.35 0.13 ${hue});font-size:${fs}px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto;`;
 }
 
+/* ---------- Radar năng lực nhóm so với yêu cầu bài lab ----------
+   Trục = kỹ năng bài lab đòi (nhiều việc cần thì trục càng "nặng").
+   Vùng xanh nhạt = mức bài lab đòi, vùng đậm = mức cao nhất nhóm đang có.
+   Chỗ vùng đậm thụt vào trong chính là chỗ nhóm còn hổng. */
+function teamRadarData(maxAxes){
+  const need = {};
+  S.TASKS.forEach(t => (t.skills || []).forEach(s => { need[s] = (need[s] || 0) + 1; }));
+  const ids = Object.keys(need).sort((a, b) => need[b] - need[a]).slice(0, maxAxes || 8);
+  const maxNeed = Math.max(1, ...ids.map(i => need[i]));
+  return ids.map(id => {
+    const levels = S.DEVS.map(d => (d.skills || {})[id] || 0);
+    const best = levels.length ? Math.max(...levels) : 0;
+    const bestDev = S.DEVS.slice().sort((a,b) => ((b.skills||{})[id]||0) - ((a.skills||{})[id]||0))[0];
+    return { id, label: skillLabel(id), tasks: need[id],
+      need: Math.round(60 + 40 * need[id] / maxNeed),   // 60-100 theo số việc cần trục đó
+      best, bestDev: best > 0 && bestDev ? bestDev.name : null };
+  });
+}
+
+function renderTeamRadar(size){
+  const rows = teamRadarData(8);
+  if (rows.length < 3) return '<div style="font-size:12.5px;color:#94a3b8;padding:16px;">Cần ít nhất 3 kỹ năng để vẽ radar.</div>';
+  const S2 = size || 320, cx = S2 / 2, cy = S2 / 2, R = S2 / 2 - 52;
+  const n = rows.length;
+  const ang = i => (-90 + i * 360 / n) * Math.PI / 180;
+  const pt = (i, r) => [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))];
+  const poly = (vals) => vals.map((v, i) => pt(i, R * Math.max(0, Math.min(100, v)) / 100).map(x => x.toFixed(1)).join(',')).join(' ');
+  const rings = [25, 50, 75, 100].map(p =>
+    `<polygon points="${poly(rows.map(()=>p))}" fill="none" stroke="#e2e8f0" stroke-width="1"></polygon>`).join('');
+  const spokes = rows.map((_, i) => { const [x, y] = pt(i, R);
+    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"></line>`; }).join('');
+  const dots = rows.map((r, i) => { const [x, y] = pt(i, R * r.best / 100);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#2563EB"><title>${esc(r.label)}: nhóm cao nhất ${r.best}${r.bestDev?' ('+esc(r.bestDev)+')':''}</title></circle>`; }).join('');
+  const labels = rows.map((r, i) => {
+    const [x, y] = pt(i, R + 22);
+    const a = Math.cos(ang(i));
+    const anchor = a > 0.3 ? 'start' : a < -0.3 ? 'end' : 'middle';
+    const gap = r.best < 40, weak = r.best >= 40 && r.best < 60;
+    const color = gap ? '#dc2626' : weak ? '#b45309' : '#334155';
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="10.5" font-weight="700"
+      font-family="Public Sans, sans-serif" fill="${color}">${esc(r.label.length > 18 ? r.label.slice(0,17)+'…' : r.label)}
+      <title>${esc(r.label)} — ${r.tasks} việc cần, nhóm cao nhất ${r.best}</title></text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${S2} ${S2}" style="width:100%;max-width:${S2}px;display:block;margin:0 auto;">
+    ${rings}${spokes}
+    <polygon points="${poly(rows.map(r => r.need))}" fill="rgba(99,102,241,0.10)" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 4"></polygon>
+    <polygon points="${poly(rows.map(r => r.best))}" fill="rgba(37,99,235,0.22)" stroke="#2563EB" stroke-width="2"></polygon>
+    ${dots}${labels}
+  </svg>
+  <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;font-size:11.5px;color:#475569;margin-top:6px;">
+    <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed #6366f1;vertical-align:middle;"></span> Bài lab đòi hỏi</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:rgba(37,99,235,0.35);border:2px solid #2563EB;border-radius:3px;vertical-align:middle;"></span> Mức cao nhất nhóm có</span>
+  </div>`;
+}
+
 /* ---------- Chọn kỹ năng bằng tag (không gõ tay) ----------
    Gõ tay sinh ra "NextJS" vs "Next.js" vs "Next" cho cùng một thứ; mọi so khớp
    sau đó đều trượt. Ở đây người dùng chỉ chọn trong danh mục seed/skills.json. */
@@ -659,6 +747,78 @@ function renderSkillPicker(){
       <div id="skill-options" style="max-height:46vh;overflow-y:auto;">${skillOptionList()}</div>
       <div style="display:flex;justify-content:flex-end;margin-top:14px;">
         <button class="pill-btn" style="background:#2563eb;color:#fff;padding:10px 18px;" onclick="App.closeSkillPicker()">Xong</button>
+      </div>
+    </div></div>`;
+}
+
+/* Màn chen giữa Luồng 2 và Luồng 3: AI đã biết bài lab cần gì và nhóm có gì,
+   nhưng CHƯA phân công. Người dùng chốt ai nhận học chỗ hổng rồi mới chạy matching —
+   quyết định của con người, AI chỉ tôn trọng khi ghép. */
+function renderGaps(){
+  if (S.matching) {
+    return `<div style="min-height:70vh;display:flex;align-items:center;justify-content:center;padding:32px;">
+      <div class="card2" style="padding:32px 40px;text-align:center;max-width:460px;">
+        <div style="width:46px;height:46px;border-radius:50%;border:4px solid #dbeafe;border-top-color:#2563eb;margin:0 auto 16px;animation:spinRing .9s linear infinite;"></div>
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;">Đang phân công…</div>
+        <div style="font-size:13px;color:#64748b;margin-top:6px;">AI ghép người với việc, tính Fit Score và kiểm tra cân bằng khối lượng.</div>
+      </div></div>`;
+  }
+  const missing = S.gaps.filter(g => g.status === 'thiếu');
+  const weak = S.gaps.filter(g => g.status === 'yếu');
+  const row = (g) => {
+    const picked = S.gapPick[g.skill] || '';
+    const opts = ['<option value="">— để trống, AI tự quyết —</option>']
+      .concat(S.DEVS.map(d => {
+        const lv = (d.skills || {})[g.skill] || 0;
+        const wants = (d.wantLearnIds || []).includes(g.skill);
+        const hint = wants ? ' · muốn học' : (lv > 0 ? ` · đang ${lv}/100` : '');
+        return `<option value="${d.id}" ${picked===d.id?'selected':''}>${esc(d.name)}${hint}</option>`;
+      })).join('');
+    const tone = g.status === 'thiếu' ? {bg:'#fef2f2', bd:'#fecaca', fg:'#b91c1c', tag:'✕ chưa ai làm được'}
+                                      : {bg:'#fffbeb', bd:'#fde68a', fg:'#b45309', tag:'⚠ có nền nhưng còn yếu'};
+    return `<div style="border:1px solid ${tone.bd};background:${tone.bg};border-radius:13px;padding:13px 15px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:800;font-size:13.5px;">${esc(g.label)}</div>
+          <div style="font-size:11.5px;color:#64748b;margin-top:3px;">${g.taskCount} việc cần · ${esc((g.taskNames||[]).slice(0,2).join(', '))}${(g.taskNames||[]).length>2?'…':''}</div>
+        </div>
+        <span style="font-size:10.5px;font-weight:800;color:${tone.fg};white-space:nowrap;">${tone.tag}${g.best>0?` (cao nhất ${g.best}/100)`:''}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <span style="font-size:11.5px;font-weight:700;color:#475569;">Ai sẽ nhận học phần này?</span>
+        <select onchange="App.setGapPick('${g.skill}', this.value)"
+          style="flex:1;min-width:200px;font-size:12.5px;padding:7px 10px;border-radius:9px;border:1px solid #cbd5e1;background:#fff;outline:none;cursor:pointer;">${opts}</select>
+      </div>
+    </div>`;
+  };
+  const picked = Object.keys(S.gapPick).length;
+  return `<div style="padding:28px 20px 60px;" class="fadeIn">
+    <div style="max-width:1100px;margin:0 auto;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:11.5px;font-weight:800;">✦ Bước 3/3: Trước khi AI phân công</div>
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:25px;margin-top:10px;">Nhóm còn hổng ${S.gaps.length} kỹ năng bài lab cần</div>
+        <div style="font-size:13px;color:#64748b;margin-top:5px;max-width:640px;margin-left:auto;margin-right:auto;">
+          AI đã đọc repo và dựng hồ sơ ${S.DEVS.length} thành viên, tách ra ${S.TASKS.length} đầu việc — nhưng chưa phân công.
+          Chốt ai nhận học những phần dưới đây thì phương án phân công sẽ hợp lý hơn; để trống cũng được, AI tự quyết.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:5fr 6fr;gap:18px;align-items:start;">
+        <div class="card2" style="padding:20px;">
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Năng lực nhóm so với bài lab</div>
+          <div style="font-size:12px;color:#64748b;margin:3px 0 10px;">Chỗ vùng xanh đậm thụt vào trong nét đứt là chỗ còn hổng.</div>
+          ${renderTeamRadar(320)}
+        </div>
+        <div class="card2" style="padding:20px;">
+          ${missing.length ? `<div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;margin-bottom:10px;">Chưa ai làm được (${missing.length})</div>${missing.map(row).join('')}` : ''}
+          ${weak.length ? `<div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;margin:${missing.length?'16px':'0'} 0 10px;">Có nền nhưng còn yếu (${weak.length})</div>${weak.map(row).join('')}` : ''}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px;flex-wrap:wrap;">
+        <button class="pill-btn" style="background:#fff;color:#475569;border:1px solid #e2e8f0;padding:12px 18px;" onclick="App.backToSetup()">← Sửa lại thành viên</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:12px;color:#64748b;">Đã chỉ định ${picked}/${S.gaps.length} kỹ năng</span>
+          <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:12px 18px;" onclick="App.skipGaps()">Bỏ qua, để AI tự quyết</button>
+          <button class="pill-btn" style="background:#2563eb;color:#fff;padding:12px 22px;" onclick="App.runMatching()">Phân công với lựa chọn này →</button>
+        </div>
       </div>
     </div></div>`;
 }
@@ -1091,11 +1251,18 @@ function renderSkillMatrix(){
       </td>${cells}
       <td style="padding:6px 2px 6px 10px;white-space:nowrap;">${tag}</td></tr>`;
   }).join('');
-  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-      ${stat(m.needed.length, 'kỹ năng bài lab đòi hỏi', '#2563eb', '#eff6ff')}
-      ${stat(m.solid, 'đã có người đủ sức (≥60)', '#059669', '#ecfdf5')}
-      ${stat(m.spof, 'chỉ 1 người gánh — nghỉ là kẹt', '#d97706', '#fffbeb')}
-      ${stat(m.gaps, 'chưa ai làm được — cần học/nhờ coach', '#dc2626', '#fef2f2')}
+  return `<div style="display:grid;grid-template-columns:360px 1fr;gap:16px;align-items:start;margin-bottom:16px;">
+      <div class="card2" style="padding:18px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:14.5px;margin-bottom:2px;">Radar: nhóm so với bài lab</div>
+        <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">Nhãn đỏ = chưa ai làm được, cam = còn yếu.</div>
+        ${renderTeamRadar(300)}
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-content:flex-start;">
+        ${stat(m.needed.length, 'kỹ năng bài lab đòi hỏi', '#2563eb', '#eff6ff')}
+        ${stat(m.solid, 'đã có người đủ sức (≥60)', '#059669', '#ecfdf5')}
+        ${stat(m.spof, 'chỉ 1 người gánh — nghỉ là kẹt', '#d97706', '#fffbeb')}
+        ${stat(m.gaps, 'chưa ai làm được — cần học/nhờ coach', '#dc2626', '#fef2f2')}
+      </div>
     </div>
     <div class="card2" style="padding:18px;overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;">
@@ -1979,6 +2146,7 @@ function render(){
     return;
   }
   if (S.stage === 'analyzing') { root.innerHTML = gateAnim(renderAnalyzing()); return; }
+  if (S.stage === 'gaps') { root.innerHTML = gateAnim(`<div>${renderNavbar()}${renderGaps()}</div>`); return; }
   // Tab trên header chỉ còn dashboard / summary / graph.
   // developers và tickets vẫn vào được từ thẻ thành viên và nút Tickets ở đầu trang.
   const viewHtml = S.view === 'summary' ? renderSummaryTab()

@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.llm import MODEL_FAST, call_json                     # noqa: E402
-from src.pipeline import (REPO_DECIDE_SYSTEM, _rebalance,     # noqa: E402
-                          analyze_project_ui, chat_reply,
+from src.pipeline import (REPO_DECIDE_SYSTEM, _cap_workload,  # noqa: E402
+                          _rebalance, analyze_project_ui, chat_reply,
                           match_ui, profile_developer)
 from src.schemas import GitHubData, RepoReadPlan              # noqa: E402
 from src.skills import (canon, canon_list, catalog,           # noqa: E402
@@ -391,6 +391,35 @@ def run_g01():
 
 # ================= MAIN =================
 
+def run_g02():
+    """Guardrail trần 50% — chạy trên chính hàm production _cap_workload."""
+    devs = [{"id": "d1", "name": "A", "skills": {"backend-api": 90, "ui-frontend": 85, "python": 80}, "readiness": 7},
+            {"id": "d2", "name": "B", "skills": {"ui-frontend": 55}, "readiness": 9},
+            {"id": "d3", "name": "C", "skills": {"python": 45}, "readiness": 9}]
+    tasks = [{"id": "t1", "name": "API", "skills": ["backend-api"], "estimateDays": 8},
+             {"id": "t2", "name": "UI", "skills": ["ui-frontend"], "estimateDays": 6},
+             {"id": "t3", "name": "Landing", "skills": ["ui-frontend"], "estimateDays": 4},
+             {"id": "t4", "name": "Data", "skills": ["data-handling"], "estimateDays": 5},
+             {"id": "t5", "name": "Docs", "skills": ["documentation"], "estimateDays": 3}]
+    total = sum(t["estimateDays"] for t in tasks)
+    assignments = {t["id"]: "d1" for t in tasks}      # LLM dồn hết cho 1 người
+    notes = _cap_workload(devs, tasks, assignments, {})
+    load = {d["id"]: sum(t["estimateDays"] for t in tasks if assignments[t["id"]] == d["id"])
+            for d in devs}
+    max_share = max(load.values()) / total
+    # Trường hợp chia không nổi (2 người, 1 việc chiếm 77%) thì phải cảnh báo chứ không im
+    devs2 = [{"id": "d1", "name": "A", "skills": {"python": 80}, "readiness": 7},
+             {"id": "d2", "name": "B", "skills": {"ui-frontend": 70}, "readiness": 8}]
+    tasks2 = [{"id": "t1", "name": "To", "skills": ["python"], "estimateDays": 10},
+              {"id": "t2", "name": "Nho", "skills": ["ui-frontend"], "estimateDays": 3}]
+    a2 = {"t1": "d1", "t2": "d1"}
+    notes2 = _cap_workload(devs2, tasks2, a2, {})
+    honest = any(n.startswith("Không chia được") for n in notes2)
+    ok = max_share <= 0.50 and len(notes) >= 1 and honest
+    record("G02", ok, f"share sau guardrail={ {k: round(v/total*100) for k, v in load.items()} }, "
+                      f"max={max_share:.0%}, cảnh báo khi không chia nổi={honest}")
+
+
 def run_n01():
     """Lỗi thật: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau -> báo thiếu oan."""
     variants = {
@@ -421,7 +450,7 @@ RUNNERS = [run_p01, run_p02, run_p03, run_p04, run_p05, run_p06,
            run_d01, run_d02, run_d03, run_d04, run_d05, run_d06,
            run_m01, run_m02, run_m03, run_m04, run_m05, run_m06,
            run_c01, run_c02, run_c03, run_c04,
-           run_a01, run_g01, run_n01, run_n02]
+           run_a01, run_g01, run_g02, run_n01, run_n02]
 
 
 def write_report():

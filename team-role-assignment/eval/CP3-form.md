@@ -9,7 +9,7 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 
 ## 2. Tổng số câu trong bộ thử nghiệm
 
-**26** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
+**27** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
 
 ## 3. Bốn kiểu tình huống khó của sản phẩm
 
@@ -26,12 +26,12 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 - ✅ Thông tin KHÔNG có trong tài liệu: **8 câu** (P03, P04, P05, D01, D02, D03, C02, N02)
 - ✅ Câu mơ hồ, thiếu ngữ cảnh: **4 câu** (P02, P06, D04, D05)
 - ✅ Đòi thứ không được phép: **2 câu** (C01, C04)
-- ✅ Sai gây hậu quả thật: **9 câu** (D06, M02, M03, M04, M05, M06, C03, G01, N01)
+- ✅ Sai gây hậu quả thật: **10 câu** (D06, M02, M03, M04, M05, M06, C03, G01, G02, N01)
 - (còn 3 câu happy path: P01, M01, A01)
 
 ## 4. Số câu bắt nguồn từ quan sát thực tế
 
-**13 câu** (P03, P04, D03, D04, D06, M03, M04, M05, M06, A01, G01, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
+**14 câu** (P03, P04, D03, D04, D06, M03, M04, M05, M06, A01, G01, G02, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
 - Lab Coach điền kỹ năng "NextJS", hệ thống ghi "Next.js" → bảng kỹ năng báo thiếu oan (lỗi thật, đã sửa bằng danh mục chuẩn + tag picker) → case N01, M06.
 - Repo của HuyhoangUK1234 toàn fork → hồ sơ rỗng (bug thật, đã sửa) → case D03.
 - Gõ sai GitHub username → 404, chỉ còn tự khai → case D04.
@@ -48,16 +48,18 @@ Lịch sử đầy đủ: `eval/run-history.md`; bảng chi tiết từng câu c
 |---|---|---|---:|---|
 | 1 — bộ 24 câu ban đầu | 30/07/2026 | 21/24 (87.5%) | 0 | ĐẠT |
 | 2 — ngay sau khi ép kỹ năng về danh mục chuẩn | 31/07/2026 | 20/26 (76.9%) | **2** | **CHƯA ĐẠT** |
-| 3 — sau khi siết prompt + thêm guardrail giữ kỹ năng tự khai | 31/07/2026 | **23/26 (88.5%)** | 0 | ĐẠT |
+| 3 — sau khi siết prompt + thêm guardrail giữ kỹ năng tự khai | 31/07/2026 | 23/26 (88.5%) | 0 | ĐẠT |
+| 4 — thêm guardrail trần 50% khối lượng (case G02) | 31/07/2026 | **25/27 (92.6%)** | 0 | ĐẠT |
 
 **Lượt 2 là lượt đáng giá nhất để kể khi demo:** việc thống nhất tên kỹ năng về 24 trục của khoá đã sửa được lỗi "NextJS ≠ Next.js", nhưng lại đẻ ra lỗi mới — trục quá thô khiến model suy diễn bắc cầu ("có repo Python" → gán thêm `backend-api`, `data-handling`; repo toàn JavaScript vẫn gán `python`) và làm rơi kỹ năng ngoài danh mục (khai Java thì Java biến mất khỏi hồ sơ). Đó là 2 lần bịa, tức vi phạm đúng điều nhóm cam kết không cho phép sai, nên lượt đó **trượt chuẩn** dù vẫn 76.9%.
 
 Cách sửa (không hạ chuẩn): thêm quy tắc cấm suy diễn bắc cầu vào prompt Luồng 1, và thêm guardrail bằng code — kỹ năng người dùng tự khai luôn được giữ trong hồ sơ với mức 45 và ghi rõ "self-reported". Lượt 3 hết bịa.
 
-3 câu còn fail ở lượt 3 (số thật):
+2 câu còn fail ở lượt 4 (số thật):
 - **P01**: README web đầy đủ nhưng model vẫn trả `confidence=low` — quá thận trọng chứ không bịa.
-- **M02**: việc cần kỹ năng cả nhóm không có, model chấm fit 55 và không phát cảnh báo (đáng lẽ đưa vào unassigned).
-- **M03**: người giỏi nhất vẫn bị dồn 54% khối lượng (ngưỡng cam kết 50%) — LLM không tuân thủ hết ràng buộc cân bằng ở tầng prompt; tầng code `_rebalance` chỉ đảm bảo ai cũng có việc chứ chưa chặn trần 50%.
+- **M03**: ở tầng LLM, người giỏi nhất vẫn bị dồn 54% khối lượng (ngưỡng cam kết 50%). Tầng sản phẩm đã chặn: guardrail `_cap_workload` chuyển việc tới khi không ai vượt 50%, chia không nổi thì ghi cảnh báo nói rõ lý do — case **G02 PASS** đo đúng guardrail này (dồn 100% cho 1 người → cao nhất còn 46%).
+
+(M02 — việc cần kỹ năng cả nhóm không có — lượt 3 fail, lượt 4 đã PASS: model đưa vào `unassigned` kèm cảnh báo.)
 
 → Khoảng cách giữa tầng LLM và tầng sản phẩm (LLM + guardrail code) chính là lý do phải có guardrail deterministic — 1 slide khi demo.
 
@@ -85,8 +87,8 @@ Vì sao phần hai: người dùng tin ngay khi AI nói "bạn A mạnh Python (
 
 1. **Bằng chứng định tính.** Có số khảo sát 45 học viên nhưng chưa đủ ≥5 quote nguyên văn về pain phân công nhóm; cần gợi ý cách xin quote nhanh trong Discord khoá mà vẫn ổn về quyền riêng tư.
 2. **Willing users.** Chưa đủ 3 trưởng nhóm ngoài nhóm chịu thử trước demo.
-3. **Ba case eval còn fail chưa biết sửa ở tầng prompt** (confidence quá thận trọng; LLM vẫn dồn 54% khối lượng dù prompt cấm; LLM trả `developer_id` bằng tên thay vì id). Hiện chặn bằng guardrail code — muốn hỏi: nên siết bằng prompt/schema hay chấp nhận guardrail deterministic là đúng hướng?
+3. **Case eval còn fail ở tầng LLM** (P01 confidence quá thận trọng; M03 vẫn dồn 54% khối lượng dù prompt cấm). Sản phẩm chặn bằng guardrail code — muốn hỏi: nên tiếp tục siết bằng prompt/schema hay chấp nhận guardrail deterministic là đúng hướng?
 4. **Độ ổn định của eval.** Mới chạy vài lượt, LLM không deterministic; chưa rõ cần bao nhiêu lượt để con số có ý nghĩa và cách báo cáo cho trung thực (mỗi lượt tốn tiền API thật).
 5. **Chưa đo được lợi ích thật.** Chưa biết cách đo "tiết kiệm bao nhiêu thời gian so với chia việc thủ công" mà không cần nhiều người dùng.
 6. **Đăng nhập còn là demo** (chọn vai trò, Lab Coach lấy từ `seed/labcoach.json`, không mật khẩu) — cần biết mức này có đạt yêu cầu chấm không.
-7. **Chặn trần khối lượng 50%/người** hiện chỉ nằm ở prompt (case M03 vẫn fail) — chưa biết nên ép cứng bằng code (tự chuyển việc cho tới khi dưới ngưỡng) hay để người dùng tự cân, vì ép cứng có thể giao việc cho người không đủ kỹ năng.
+7. **Trần khối lượng 50%** đã ép bằng code, nhưng khi nhóm ít người và đầu việc lớn thì không có cách chia nào dưới trần — hiện app nói thẳng điều đó. Chưa rõ nên đi xa hơn không: tự tách đầu việc lớn thành phần nhỏ (rủi ro bịa ra phạm vi công việc không có trong đề bài).

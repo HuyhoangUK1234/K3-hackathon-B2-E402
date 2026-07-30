@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from src.pipeline import analyze_all, chat_reply
+from src.pipeline import analyze_all, analyze_match, analyze_prepare, chat_reply
 
 load_dotenv()
 
@@ -64,6 +64,11 @@ def _now() -> str:
 class AnalyzeRequest(BaseModel):
     setup: dict
     members: list[dict]
+
+
+class MatchRequest(BaseModel):
+    draftId: str
+    volunteers: dict = {}      # {skill_id: developer_id} — nhóm chốt ai nhận học kỹ năng thiếu
 
 
 class ChatRequest(BaseModel):
@@ -151,20 +156,12 @@ def list_skills():
     return _graph_call(as_options)
 
 
-@app.post("/api/analyze")
-def analyze(req: AnalyzeRequest):
-    if not req.members:
-        return JSONResponse(status_code=400, content={"error": "Cần ít nhất 1 thành viên."})
-    try:
-        payload = analyze_all(req.setup, req.members)
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+def _persist_group(setup: dict, members: list, payload: dict) -> dict:
     group = {
         "id": f"G{int(time.time()) % 1000000}",
         "createdAt": _now(),
-        "setup": req.setup,
-        "members": req.members,
+        "setup": setup,
+        "members": members,
         "payload": payload,
         "status": "Analyzed",
         "coachFeedback": "",
@@ -177,6 +174,55 @@ def analyze(req: AnalyzeRequest):
     payload["status"] = group["status"]
     payload["coachFeedback"] = ""
     return payload
+
+
+@app.post("/api/analyze")
+def analyze(req: AnalyzeRequest):
+    """Chạy một lượt cả 3 luồng (giữ cho script/test cũ)."""
+    if not req.members:
+        return JSONResponse(status_code=400, content={"error": "Cần ít nhất 1 thành viên."})
+    try:
+        payload = analyze_all(req.setup, req.members)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    return _persist_group(req.setup, req.members, payload)
+
+
+@app.post("/api/analyze/prepare")
+def analyze_prepare_step(req: AnalyzeRequest):
+    """Luồng 1+2. Trả về hồ sơ + đầu việc + danh sách kỹ năng nhóm còn thiếu.
+
+    Chưa tốn lượt matching: người dùng còn được chốt ai nhận học chỗ thiếu.
+    """
+    if not req.members:
+        return JSONResponse(status_code=400, content={"error": "Cần ít nhất 1 thành viên."})
+    try:
+        draft = analyze_prepare(req.setup, req.members)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    draft_id = f"DR{int(time.time()) % 1000000}"
+    drafts = _load("drafts.json")[-19:]          # giữ 20 bản nháp gần nhất là đủ
+    drafts.append({"id": draft_id, "createdAt": _now(), "setup": req.setup,
+                   "members": req.members, "draft": draft})
+    _save("drafts.json", drafts)
+    return {"draftId": draft_id, **draft}
+
+
+@app.post("/api/analyze/match")
+def analyze_match_step(req: MatchRequest):
+    """Luồng 3 trên bản nháp đã chuẩn bị, có kèm quyết định ai học kỹ năng thiếu."""
+    entry = next((d for d in _load("drafts.json") if d["id"] == req.draftId), None)
+    if entry is None:
+        return JSONResponse(status_code=404, content={
+            "error": "Bản nháp đã hết hạn hoặc server vừa khởi động lại — chạy phân tích lại."})
+    try:
+        payload = analyze_match(entry["draft"], req.volunteers)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    return _persist_group(entry["setup"], entry["members"], payload)
 
 
 @app.get("/api/groups")
