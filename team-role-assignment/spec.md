@@ -14,6 +14,7 @@ Loại: [x] Tính năng mới
 
 ## §2. Impact & quyết định chọn
 - Bảng impact ≥3 ứng viên: [TODO-EVIDENCE — điền sau khảo sát]
+  
  | Ứng viên | Bao nhiêu người | Tần suất | Tốn gì mỗi lần | Khả thi |
 |---|---:|---|---|---|
 | **Khó phân công vai trò trong team (CHỌN)** | **35** | Mỗi project (~2–3 lần/khóa) | 1–3 ngày tranh luận đầu dự án, dễ giao sai người và phải phân công lại | Working prototype trong hackathon |
