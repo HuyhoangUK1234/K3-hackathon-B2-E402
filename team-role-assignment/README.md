@@ -1,6 +1,6 @@
-# 🧩 AI-Based Team Role Assignment
+# 🧩 AI Lab Team — Phân tích bài lab & phân công nhóm
 
-Phân tích GitHub activity của từng thành viên + yêu cầu dự án → đề xuất phân công công việc tối ưu kèm Fit Score và giải thích có trích dẫn bằng chứng.
+Phân tích GitHub activity thật của từng thành viên + tự đọc repo bài lab → đề xuất phân công tối ưu kèm Fit Score, bằng chứng và tóm tắt bài lab. Hai vai trò: **Học viên** (tạo phân tích, xem phân công, gửi ticket) và **Lab Coach** (theo dõi mọi nhóm, phê duyệt, trả lời ticket).
 
 > Hackathon Hướng C — Làn mở. Kế hoạch chi tiết: [PLAN.md](PLAN.md).
 
@@ -10,23 +10,33 @@ Phân tích GitHub activity của từng thành viên + yêu cầu dự án → 
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-copy .env.example .env           # rồi điền OPENAI_API_KEY
-streamlit run app.py
+copy .env.example .env           # rồi điền OPENAI_API_KEY (+ GITHUB_TOKEN nếu có)
+uvicorn server:app --port 8000   # mở http://localhost:8000
 ```
+
+## Tính năng chính
+
+- **Luồng 1** — hồ sơ kỹ năng từng người từ GitHub thật (commit/PR/ngôn ngữ), mỗi skill kèm evidence, radar chart.
+- **Luồng 2** — agent tự đọc README + chọn file .md cần thiết trong repo bài lab; sinh tóm tắt bài lab, mục tiêu, Task Graph.
+- **Luồng 3** — matching người × việc (Fit Score + lý do cite evidence), guardrail code chống dồn việc, bảng "Dự án cần gì — ai có?".
+- **Vai trò**: đăng nhập Học viên / Lab Coach; coach xem danh sách nhóm (tỉ lệ cân bằng), phê duyệt, nhận xét.
+- **Tickets**: học viên Raise Ticket khi kẹt; coach lọc/đánh dấu xong/phản hồi — cả 2 vai trò cùng xem.
 
 ## Cấu trúc
 
 | File | Vai trò |
 |---|---|
-| `app.py` | Streamlit UI — 3 tab: Thành viên / Dự án / Phân công |
-| `src/github_fetcher.py` | Luồng 1 thu thập GitHub (REST API, không AI — mọi con số từ đây) |
-| `src/dev_analyzer.py` | Luồng 1 AI: GitHubData + tự khai → DeveloperProfile (skill nào cũng phải có evidence) |
-| `src/project_analyzer.py` | Luồng 2 AI: README + deps → TaskGraph (thiếu info → confidence low + câu hỏi, không đoán) |
-| `src/matcher.py` | Luồng 3 AI: profiles × tasks → assignments + fit score + lý do cite evidence |
+| `server.py` | FastAPI: UI + `/api/analyze`, `/api/groups`, `/api/tickets`, `/api/chat` |
+| `static/index.html` | Toàn bộ UI (vanilla JS, 2 vai trò, radar, kéo-thả matching, tickets) |
+| `src/pipeline.py` | 3 luồng AI + agent đọc repo + guardrail `_rebalance` |
+| `src/github_fetcher.py` | Thu thập GitHub (REST API, không AI — mọi con số từ đây) |
+| `src/repo_fetcher.py` | Đọc README/tree/file từ repo bài lab |
 | `src/llm.py` | Wrapper OpenAI JSON mode + validate Pydantic + retry 1 lần |
 | `src/schemas.py` | Pydantic schemas cho cả 3 luồng |
-| `eval/golden_set.json` | Bộ case kiểm thử (đang mở rộng lên ≥20) |
-| `demo/sample_readme.md` | README mẫu để demo Tab 2 nhanh |
+| `eval/golden_set.json` | Bộ câu thử 24 case (4 kiểu rủi ro, 12 case từ quan sát thực tế) |
+| `eval/results.md` | Kết quả chạy bộ câu thử (kể cả câu fail) |
+| `scripts/run_eval.py` | Chạy eval qua đúng prompt production |
+| `data/` | groups.json + tickets.json (trạng thái runtime, không commit) |
 
 ## Nguyên tắc an toàn (4 lớp chỗ khó)
 

@@ -3,16 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RoleFit AI — Team Role Assignment</title>
+<title>AI Lab Team — Phân tích bài lab & phân công nhóm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  body{margin:0;background:oklch(0.97 0.005 85);font-family:'Public Sans',sans-serif;color:oklch(0.24 0.01 85);}
+  body{margin:0;background:#f8fafc;font-family:'Public Sans',sans-serif;color:#0f172a;}
+  .pill-btn{border:none;cursor:pointer;font-weight:700;font-size:12px;padding:8px 14px;border-radius:10px;transition:all .15s;}
+  .card2{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  .modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .modal-box{background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 24px 60px rgba(15,23,42,.25);}
+  .seg-bar{display:flex;height:34px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;}
+  .seg-bar>div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;transition:all .2s;cursor:pointer;}
+  .seg-bar>div.dim{opacity:.45;}
+  .task-card{border-radius:14px;transition:all .15s;cursor:pointer;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .fadeIn{animation:fadeIn .3s ease;}
   * { box-sizing: border-box; }
   ::-webkit-scrollbar{height:8px;width:8px;}
   ::-webkit-scrollbar-thumb{background:oklch(0.85 0.01 85);border-radius:8px;}
-  a{color:oklch(0.56 0.15 285);}
-  a:hover{color:oklch(0.46 0.15 285);}
+  a{color:oklch(0.56 0.15 262);}
+  a:hover{color:oklch(0.46 0.15 262);}
   @keyframes pulseGlow { 0%{opacity:0.85;} 50%{opacity:0.2;} 100%{opacity:0.85;} }
   @keyframes spinRing { to { transform: rotate(360deg); } }
   button{font-family:inherit;}
@@ -34,10 +44,29 @@ const ANALYZE_LABELS = [
   'Tối ưu matching Developer × Task',
 ];
 const DIFF_RANK = {'Thấp':0,'Trung bình':1,'Cao':2};
-const HUES = [285, 175, 230, 40, 330, 130, 20, 260];
+const HUES = [262, 165, 70, 300, 350, 220, 20, 130];
+const COLORS = [
+  {hex:'#2563EB', name:'Xanh Lam',  bg:'rgba(37,99,235,0.07)',  border:'rgba(37,99,235,0.4)'},
+  {hex:'#059669', name:'Xanh Lục',  bg:'rgba(5,150,105,0.07)',  border:'rgba(5,150,105,0.4)'},
+  {hex:'#D97706', name:'Vàng Cam',  bg:'rgba(217,119,6,0.07)',  border:'rgba(217,119,6,0.4)'},
+  {hex:'#7C3AED', name:'Tím Thẫm',  bg:'rgba(124,58,237,0.07)', border:'rgba(124,58,237,0.4)'},
+  {hex:'#DB2777', name:'Hồng Sen',  bg:'rgba(219,39,119,0.07)', border:'rgba(219,39,119,0.4)'},
+  {hex:'#0891B2', name:'Xanh Ngọc', bg:'rgba(8,145,178,0.07)',  border:'rgba(8,145,178,0.4)'},
+  {hex:'#EA580C', name:'Cam Đất',   bg:'rgba(234,88,12,0.07)',  border:'rgba(234,88,12,0.4)'},
+  {hex:'#4D7C0F', name:'Xanh Rêu',  bg:'rgba(77,124,15,0.07)',  border:'rgba(77,124,15,0.4)'},
+];
+function devColor(dev){ const i = Math.max(0, S.DEVS.findIndex(d=>d.id===dev.id)); return COLORS[i % COLORS.length]; }
 
 const S = {
-  stage: 'setup', setupStep: 1, analyzeIndex: 0, analyzeError: '',
+  stage: 'login', setupStep: 1, analyzeIndex: 0, analyzeError: '',
+  user: null, role: 'student',
+  page: 'input',                 // input | coach  (khi stage==='app' thì view điều khiển)
+  groupId: null, groupStatus: 'Analyzed', coachFeedback: '', createdAt: '',
+  groups: [], tickets: [], ticketFilter: 'all',
+  ticketModal: false, ticketIssue: '', ticketPriority: 'medium',
+  ticketDetail: null, ticketEditStatus: 'pending', ticketEditResponse: '',
+  coachModal: false, coachNote: '', coachStatusEdit: 'Analyzed',
+  hoverDevId: null, hoverTaskId: null,
   view: 'dashboard', selectedDevId: null, currentUserId: null,
   devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
   sortCol: 'difficulty', sortDir: 'desc',
@@ -48,7 +77,7 @@ const S = {
   chatMessages: [{from:'ai', text:'Xin chào! Hỏi mình về hồ sơ lập trình viên, Task Graph, Bài Lab hoặc phương án phân công nhé.'}],
   // Filled from /api/analyze:
   DEVS: [], TASKS: [], LABS: [], PROJECT: null, FIT_MATRIX: {}, DEFAULT_ASSIGNMENTS: {},
-  assignments: {}, warnings: [], workloadNotes: '',
+  assignments: {}, warnings: [], workloadNotes: '', SKILL_COVERAGE: [],
   skillLevels: {}, labProgress: {}, labCompleted: {}, labGains: {}, animatingDevIds: {},
 };
 
@@ -243,7 +272,7 @@ function buildFlowGraph(devs, tasks, projectName){
     task.skills.forEach(sn => {
       if (skillY[sn] == null) return;
       taskEdges.push({ d: curve(COL.skill + chipWidth(sn, 12) / 2, skillY[sn], tn.leftX, tn.cy),
-        stroke: 'oklch(0.62 0.1 285)', strokeWidth: 1.6, opacity: 0.4 });
+        stroke: 'oklch(0.62 0.1 262)', strokeWidth: 1.6, opacity: 0.4 });
     });
   });
   const teamRoot = { x: COL.team, y: H / 2 - 24, w: 118, h: 48, textX: COL.team + 59, textY: H / 2 + 5, rightX: COL.team + 118, cy: H / 2 };
@@ -266,6 +295,141 @@ function buildFlowGraph(devs, tasks, projectName){
 /* ================= App actions ================= */
 const App = {
   set(k, v){ S[k] = v; render(); },
+
+  /* ---- auth & role ---- */
+  login(role){
+    S.user = role === 'coach'
+      ? { name: 'Lab Coach', role: 'coach', dept: 'Người hướng dẫn lab' }
+      : { name: 'Học viên Team B2', role: 'student', dept: 'Vin AI — Khóa 3' };
+    S.role = role;
+    S.stage = role === 'coach' ? 'coach' : 'setup';
+    if (role === 'coach') App.loadCoachData();
+    render();
+  },
+  logout(){ S.user = null; S.role = 'student'; S.stage = 'login'; render(); },
+  switchRole(role){
+    if (!S.user) return;
+    S.role = role; S.user.role = role;
+    if (role === 'coach') { S.stage = 'coach'; App.loadCoachData(); }
+    else { S.stage = S.DEVS.length ? 'app' : 'setup'; }
+    render();
+  },
+
+  /* ---- coach dashboard data ---- */
+  async loadCoachData(){
+    try {
+      const [gr, tk] = await Promise.all([
+        fetch('/api/groups').then(r=>r.json()),
+        fetch('/api/tickets').then(r=>r.json()),
+      ]);
+      S.groups = Array.isArray(gr) ? gr : [];
+      S.tickets = Array.isArray(tk) ? tk : [];
+      render();
+    } catch(e) { /* server offline */ }
+  },
+  async openGroup(id){
+    try {
+      const data = await fetch('/api/groups/' + id).then(r=>r.json());
+      if (data.error) { alert(data.error); return; }
+      App.applyPayload(data);
+      S.stage = 'app'; S.view = 'dashboard'; render();
+      App.loadGroupTickets();
+    } catch(e) { alert('Lỗi tải nhóm: ' + e.message); }
+  },
+  applyPayload(data){
+    S.DEVS = data.devs; S.TASKS = data.tasks; S.LABS = data.labs; S.PROJECT = data.project;
+    S.FIT_MATRIX = data.fitMatrix; S.DEFAULT_ASSIGNMENTS = { ...data.assignments };
+    S.assignments = { ...data.assignments };
+    S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
+    S.SKILL_COVERAGE = data.skillCoverage || [];
+    S.groupId = data.groupId || null; S.groupStatus = data.status || 'Analyzed';
+    S.coachFeedback = data.coachFeedback || ''; S.createdAt = data.createdAt || '';
+    S.skillLevels = {}; S.DEVS.forEach(d => { S.skillLevels[d.id] = { ...d.skills }; });
+    S.selectedDevId = S.DEVS.length ? S.DEVS[0].id : null;
+    S.currentUserId = S.DEVS.length ? S.DEVS[0].id : null;
+    S.labProgress = {}; S.labCompleted = {}; S.labGains = {}; S.animatingDevIds = {};
+  },
+  backToCoach(){ S.stage = 'coach'; App.loadCoachData(); render(); },
+
+  /* ---- tickets ---- */
+  async loadGroupTickets(){
+    if (!S.groupId) return;
+    try {
+      S.tickets = await fetch('/api/tickets?group_id=' + S.groupId).then(r=>r.json());
+      render();
+    } catch(e) {}
+  },
+  openTicketModal(){ S.ticketModal = true; S.ticketIssue = ''; S.ticketPriority = 'medium'; render(); },
+  closeTicketModal(){ S.ticketModal = false; render(); },
+  async submitTicket(){
+    const issue = (document.getElementById('ticket-issue')||{}).value || S.ticketIssue;
+    if (!issue.trim()) { alert('Nhập mô tả vấn đề trước khi gửi.'); return; }
+    const me = S.DEVS.find(d=>d.id===S.currentUserId);
+    try {
+      const resp = await fetch('/api/tickets', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ groupId: S.groupId || '', studentName: me ? me.name : (S.user?S.user.name:''),
+          labName: S.PROJECT ? S.PROJECT.name : '', issue, priority: S.ticketPriority }) });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      S.ticketModal = false;
+      await App.loadGroupTickets();
+      if (S.role === 'coach') await App.loadCoachData();
+      S.view = 'tickets'; render();
+    } catch(e) { alert('Gửi ticket lỗi: ' + e.message); }
+  },
+  openTicketDetail(id){
+    const t = S.tickets.find(x=>x.id===id); if (!t) return;
+    S.ticketDetail = t; S.ticketEditStatus = t.status; S.ticketEditResponse = t.coachResponse || '';
+    render();
+  },
+  closeTicketDetail(){ S.ticketDetail = null; render(); },
+  async saveTicketDetail(){
+    if (!S.ticketDetail) return;
+    const resp = (document.getElementById('ticket-response')||{}).value ?? S.ticketEditResponse;
+    try {
+      await fetch('/api/tickets/' + S.ticketDetail.id, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: S.ticketEditStatus, coachResponse: resp }) });
+      S.ticketDetail = null;
+      if (S.role === 'coach' && S.stage === 'coach') await App.loadCoachData(); else await App.loadGroupTickets();
+      render();
+    } catch(e) { alert('Lưu ticket lỗi: ' + e.message); }
+  },
+  async toggleTicket(ev, id){
+    if (ev) ev.stopPropagation();
+    const t = S.tickets.find(x=>x.id===id); if (!t) return;
+    const next = t.status === 'resolved' ? 'pending' : 'resolved';
+    try {
+      await fetch('/api/tickets/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: next }) });
+      t.status = next; render();
+    } catch(e) {}
+  },
+
+  /* ---- coach feedback on group ---- */
+  openCoachModal(){ S.coachModal = true; S.coachNote = S.coachFeedback; S.coachStatusEdit = S.groupStatus; render(); },
+  closeCoachModal(){ S.coachModal = false; render(); },
+  async saveCoachFeedback(){
+    const note = (document.getElementById('coach-note')||{}).value ?? S.coachNote;
+    try {
+      await fetch('/api/groups/' + S.groupId, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: S.coachStatusEdit, coachFeedback: note }) });
+      S.groupStatus = S.coachStatusEdit; S.coachFeedback = note; S.coachModal = false; render();
+    } catch(e) { alert('Lưu đánh giá lỗi: ' + e.message); }
+  },
+  async persistAssignments(){
+    if (!S.groupId) return;
+    try {
+      await fetch('/api/groups/' + S.groupId, { method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ assignments: S.assignments }) });
+    } catch(e) {}
+  },
+
+  /* ---- hover sync (task cards <-> workload bar) ---- */
+  hoverDev(id){ S.hoverDevId = id; S.hoverTaskId = null; render(); },
+  hoverTask(taskId, devId){ S.hoverTaskId = taskId; S.hoverDevId = devId || null; render(); },
+  hoverClear(){ S.hoverDevId = null; S.hoverTaskId = null; render(); },
+  setTicketFilter(v){ S.ticketFilter = v; render(); },
+  setCoachTab(v){ S.page = v; render(); },
   setSetup(field, v){ S.setup[field] = v; },
   setMember(i, field, v){
     S.members[i][field] = (field === 'readiness' || field === 'experienceYears') ? Number(v) : v;
@@ -300,14 +464,9 @@ const App = {
       const data = await resp.json();
       clearInterval(timer);
       if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
-      S.DEVS = data.devs; S.TASKS = data.tasks; S.LABS = data.labs; S.PROJECT = data.project;
-      S.FIT_MATRIX = data.fitMatrix; S.DEFAULT_ASSIGNMENTS = { ...data.assignments };
-      S.assignments = { ...data.assignments };
-      S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
-      S.skillLevels = {}; S.DEVS.forEach(d => { S.skillLevels[d.id] = { ...d.skills }; });
-      S.selectedDevId = S.DEVS[0].id; S.currentUserId = S.DEVS[0].id;
-      S.labProgress = {}; S.labCompleted = {}; S.labGains = {}; S.animatingDevIds = {};
+      App.applyPayload(data);
       S.analyzeIndex = ANALYZE_LABELS.length; render();
+      App.loadGroupTickets();
       setTimeout(() => { S.stage = 'app'; S.view = 'dashboard'; render(); }, 420);
     } catch (e) {
       clearInterval(timer);
@@ -322,14 +481,14 @@ const App = {
   setSkillFilter(v){ S.devSkillFilter = v; render(); },
   setDifficultyFilter(v){ S.difficultyFilter = v; render(); },
   selectUser(v){ S.currentUserId = v; render(); },
-  resetAssignments(){ S.assignments = { ...S.DEFAULT_ASSIGNMENTS }; render(); },
-  claimTask(id){ S.assignments[id] = S.currentUserId; render(); },
-  releaseTask(id){ S.assignments[id] = null; render(); },
+  resetAssignments(){ S.assignments = { ...S.DEFAULT_ASSIGNMENTS }; App.persistAssignments(); render(); },
+  claimTask(id){ S.assignments[id] = S.currentUserId; App.persistAssignments(); render(); },
+  releaseTask(id){ S.assignments[id] = null; App.persistAssignments(); render(); },
 
   allowDrop(e){ e.preventDefault(); },
   dragStart(e, taskId){ e.dataTransfer.setData('text/plain', taskId); },
-  dropOnPool(e){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = null; render(); } },
-  dropOnDev(e, devId){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = devId; render(); } },
+  dropOnPool(e){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = null; App.persistAssignments(); render(); } },
+  dropOnDev(e, devId){ e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) { S.assignments[id] = devId; App.persistAssignments(); render(); } },
 
   openExplain(e, taskId, devId){ if (e) e.stopPropagation(); S.explainTaskId = taskId; S.explainDevId = devId; render(); },
   closeExplain(){ S.explainTaskId = null; S.explainDevId = null; render(); },
@@ -425,11 +584,11 @@ const card = 'background:oklch(0.995 0.003 85);border:1px solid oklch(0.9 0.006 
 const inputStyle = 'width:100%;padding:11px 14px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);font-size:13.5px;outline:none;';
 const taStyle = inputStyle + 'font-family:inherit;resize:vertical;';
 const label12 = 'font-size:12.5px;font-weight:700;margin-bottom:6px;';
-const primaryBtn = 'background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:11px;padding:13px 22px;font-size:13.5px;font-weight:700;cursor:pointer;';
+const primaryBtn = 'background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border:none;border-radius:11px;padding:13px 22px;font-size:13.5px;font-weight:700;cursor:pointer;';
 
 function logoHtml(size){
-  return `<div style="width:34px;height:34px;border-radius:9px;background:oklch(0.56 0.15 285);display:flex;align-items:center;justify-content:center;">
-    <div style="width:14px;height:14px;border-radius:4px;background:oklch(0.97 0.01 285);"></div></div>`;
+  return `<div style="width:34px;height:34px;border-radius:9px;background:oklch(0.56 0.15 262);display:flex;align-items:center;justify-content:center;">
+    <div style="width:14px;height:14px;border-radius:4px;background:oklch(0.97 0.01 262);"></div></div>`;
 }
 function avatarStyle(hue, px, fs){
   return `width:${px}px;height:${px}px;border-radius:50%;background:oklch(0.93 0.05 ${hue});color:oklch(0.35 0.13 ${hue});font-size:${fs}px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto;`;
@@ -437,7 +596,7 @@ function avatarStyle(hue, px, fs){
 
 function renderSetup(){
   const steps = [1,2].map(n =>
-    `<div style="font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;background:${S.setupStep===n?'oklch(0.93 0.03 285)':'oklch(0.96 0.006 85)'};color:${S.setupStep===n?'oklch(0.4 0.13 285)':'oklch(0.55 0.01 85)'};">${n===1?'1 · Dự án':'2 · Thành viên'}</div>`).join('');
+    `<div style="font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;background:${S.setupStep===n?'oklch(0.93 0.03 262)':'oklch(0.96 0.006 85)'};color:${S.setupStep===n?'oklch(0.4 0.13 262)':'oklch(0.55 0.01 85)'};">${n===1?'1 · Dự án':'2 · Thành viên'}</div>`).join('');
   const errBanner = S.analyzeError ? `<div style="background:oklch(0.95 0.04 25);border:1px solid oklch(0.75 0.1 25);color:oklch(0.4 0.14 25);border-radius:12px;padding:12px 16px;font-size:13px;margin-bottom:16px;"><strong>Phân tích thất bại:</strong> ${esc(S.analyzeError)}</div>` : '';
 
   let body = '';
@@ -449,7 +608,7 @@ function renderSetup(){
           <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:23px;">Bước 1 — Dữ liệu dự án</div>
           <div style="font-size:13.5px;color:oklch(0.5 0.01 85);margin-top:6px;">Input cho Luồng 2 (Project Analysis): README, tài liệu yêu cầu, cấu trúc source, thư viện, kiến trúc, backlog, roadmap.</div>
         </div>
-        <button style="flex:0 0 auto;border:1px solid oklch(0.8 0.06 285);background:oklch(0.96 0.02 285);color:oklch(0.42 0.13 285);border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="App.fillSample()">⚡ Điền lại dữ liệu mẫu (Team B2)</button>
+        <button style="flex:0 0 auto;border:1px solid oklch(0.8 0.06 262);background:oklch(0.96 0.02 262);color:oklch(0.42 0.13 262);border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="App.fillSample()">⚡ Điền lại dữ liệu mẫu (Team B2)</button>
       </div>
       <div style="margin-bottom:24px;"></div>
       <div style="display:flex;flex-direction:column;gap:16px;">
@@ -458,7 +617,7 @@ function renderSetup(){
             <input type="text" placeholder="VD: EduConnect – AI Learning Platform" value="${esc(su.projectName)}" onchange="App.setSetup('projectName', this.value)" style="${inputStyle}" /></div>
           <div><div style="${label12}">GitHub Repository</div>
             <input type="text" placeholder="https://github.com/org/repo" value="${esc(su.repoUrl)}" onchange="App.setSetup('repoUrl', this.value)" style="${inputStyle}" />
-            <div style="font-size:11.5px;color:oklch(0.5 0.08 285);margin-top:5px;">✦ Chỉ cần điền repo — AI tự đọc README, thư viện và các file .md cần thiết. Các ô dưới là tuỳ chọn để bổ sung/ghi đè.</div></div>
+            <div style="font-size:11.5px;color:oklch(0.5 0.08 262);margin-top:5px;">✦ Chỉ cần điền repo — AI tự đọc README, thư viện và các file .md cần thiết. Các ô dưới là tuỳ chọn để bổ sung/ghi đè.</div></div>
         </div>
         <div><div style="${label12}">README.md / Tài liệu yêu cầu <span style="font-weight:500;color:oklch(0.55 0.01 85);">(tuỳ chọn — để trống sẽ tự đọc từ repo)</span></div>
           <textarea placeholder="Để trống nếu đã điền repo — AI sẽ tự đọc. Hoặc dán nội dung README/đặc tả vào đây để ghi đè." onchange="App.setSetup('readme', this.value)" style="${taStyle}min-height:96px;">${esc(su.readme)}</textarea></div>
@@ -511,7 +670,7 @@ function renderSetup(){
             <div style="flex:0 0 110px;"><div style="${smallLabel}">Kinh nghiệm (năm)</div>
               <input type="number" min="0" step="0.5" value="${m.experienceYears}" onchange="App.setMember(${i},'experienceYears',this.value)" style="width:100%;${smallInput}" /></div>
             <div style="flex:1;"><div style="${smallLabel}" id="readiness-label-${i}">Sẵn sàng học công nghệ mới: ${m.readiness}/10</div>
-              <input type="range" min="1" max="10" step="1" value="${m.readiness}" oninput="App.setReadinessLabel(${i}, this.value)" style="width:100%;accent-color:oklch(0.56 0.15 285);" /></div>
+              <input type="range" min="1" max="10" step="1" value="${m.readiness}" oninput="App.setReadinessLabel(${i}, this.value)" style="width:100%;accent-color:oklch(0.56 0.15 262);" /></div>
           </div>
         </div>
       </div>`;
@@ -520,7 +679,7 @@ function renderSetup(){
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:23px;">Bước 2 — Dữ liệu lập trình viên</div>
       <div style="font-size:13.5px;color:oklch(0.5 0.01 85);margin-top:6px;margin-bottom:22px;">Input cho Luồng 1 (Developer Analysis). Chỉ số commit / PR / issue được đọc tự động từ GitHub; bạn khai báo phần còn lại.</div>
       <div style="display:flex;flex-direction:column;gap:12px;">${cards}</div>
-      <button style="margin-top:14px;border:1px dashed oklch(0.82 0.008 85);background:oklch(0.98 0.003 85);border-radius:11px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;color:oklch(0.45 0.05 285);" onclick="App.addMember()">＋ Thêm thành viên</button>
+      <button style="margin-top:14px;border:1px dashed oklch(0.82 0.008 85);background:oklch(0.98 0.003 85);border-radius:11px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;color:oklch(0.45 0.05 262);" onclick="App.addMember()">＋ Thêm thành viên</button>
       <div style="display:flex;justify-content:space-between;gap:10px;margin-top:24px;">
         <button style="background:oklch(0.98 0.003 85);border:1px solid oklch(0.9 0.006 85);border-radius:11px;padding:13px 20px;font-size:13.5px;font-weight:600;cursor:pointer;" onclick="App.goStep(1)">← Quay lại</button>
         <button style="${primaryBtn}" onclick="App.submitSetup()">Đưa cho AI phân tích →</button>
@@ -528,12 +687,13 @@ function renderSetup(){
     </div>`;
   }
 
-  return `<div style="min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:44px 20px 60px;">
+  return `<div style="display:flex;align-items:flex-start;justify-content:center;padding:32px 20px 60px;" class="fadeIn">
     <div style="width:100%;max-width:900px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px;">
-        ${logoHtml()}
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;">RoleFit AI</div>
-        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">${steps}</div>
+      <div style="text-align:center;margin-bottom:22px;">
+        <div style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:11.5px;font-weight:800;">✦ Bước ${S.setupStep}/2: ${S.setupStep===1?'Chọn repo bài lab — AI tự đọc README':'Nhập thành viên nhóm (tên + GitHub username)'}</div>
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:25px;margin-top:10px;">Cấu hình phân công nhóm bài lab</div>
+        <div style="font-size:13px;color:#64748b;margin-top:5px;">Điền repo và thành viên — AI phân tích GitHub thật, dựng hồ sơ kỹ năng và chia việc tối ưu.</div>
+        <div style="display:inline-flex;gap:8px;align-items:center;margin-top:12px;">${steps}</div>
       </div>
       ${errBanner}${body}
     </div></div>`;
@@ -543,16 +703,16 @@ function renderAnalyzing(){
   const steps = ANALYZE_LABELS.map((label, i) => {
     const done = i < S.analyzeIndex, active = i === S.analyzeIndex;
     return `<div style="display:flex;align-items:center;gap:10px;font-size:13px;">
-      <div style="flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;background:${done?'oklch(0.93 0.05 175)':active?'oklch(0.93 0.03 285)':'oklch(0.95 0.006 85)'};color:${done?'oklch(0.35 0.12 175)':'oklch(0.4 0.13 285)'};">${done?'✓':active?'•':''}</div>
-      <div style="color:${done?'oklch(0.35 0.01 85)':active?'oklch(0.3 0.05 285)':'oklch(0.65 0.01 85)'};font-weight:${active?'700':'500'};">${esc(label)}</div>
+      <div style="flex:0 0 auto;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;background:${done?'oklch(0.93 0.05 175)':active?'oklch(0.93 0.03 262)':'oklch(0.95 0.006 85)'};color:${done?'oklch(0.35 0.12 175)':'oklch(0.4 0.13 262)'};">${done?'✓':active?'•':''}</div>
+      <div style="color:${done?'oklch(0.35 0.01 85)':active?'oklch(0.3 0.05 262)':'oklch(0.65 0.01 85)'};font-weight:${active?'700':'500'};">${esc(label)}</div>
     </div>`;
   }).join('');
   return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;">
     <div style="width:100%;max-width:540px;${card}border-radius:20px;padding:34px;">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;">
         <svg width="34" height="34" viewBox="0 0 34 34" style="animation: spinRing 1s linear infinite;">
-          <circle cx="17" cy="17" r="14" fill="none" stroke="oklch(0.92 0.02 285)" stroke-width="4"></circle>
-          <path d="M17 3 a14 14 0 0 1 14 14" fill="none" stroke="oklch(0.56 0.15 285)" stroke-width="4" stroke-linecap="round"></path>
+          <circle cx="17" cy="17" r="14" fill="none" stroke="oklch(0.92 0.02 262)" stroke-width="4"></circle>
+          <path d="M17 3 a14 14 0 0 1 14 14" fill="none" stroke="oklch(0.56 0.15 262)" stroke-width="4" stroke-linecap="round"></path>
         </svg>
         <div>
           <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:19px;">AI đang phân tích</div>
@@ -573,84 +733,41 @@ function devTopFit(dev){ return Math.max(...S.TASKS.map(t => computeFit(t, dev).
 
 function renderHeader(){
   const tabsDef = [
-    ['dashboard','Tổng quan'],['developers','Lập trình viên'],['graph','Sơ đồ kỹ năng'],
-    ['project','Dự án & Lab'],['matching','Matching'],['claim','Nhận việc']];
+    ['dashboard','Tổng quan'],['summary','Tóm tắt bài lab'],['developers','Lập trình viên'],
+    ['graph','Sơ đồ kỹ năng'],['project','Lab & tiến độ'],['matching','Matching'],
+    ['claim','Nhận việc'],['tickets','🛟 Tickets']];
   const tabs = tabsDef.map(([key,label]) =>
-    `<button style="border:none;background:${S.view===key?'oklch(0.93 0.03 285)':'transparent'};color:${S.view===key?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-weight:600;font-size:12.5px;padding:9px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;" onclick="App.setView('${key}')">${label}</button>`).join('');
-  return `<div style="min-height:68px;flex:0 0 auto;background:oklch(0.995 0.003 85);border-bottom:1px solid oklch(0.9 0.006 85);display:flex;align-items:center;flex-wrap:wrap;row-gap:8px;padding:10px 24px;gap:16px;position:sticky;top:0;z-index:20;">
-    <div style="display:flex;align-items:center;gap:10px;flex:0 0 auto;">${logoHtml()}
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15.5px;letter-spacing:-0.01em;">RoleFit AI</div></div>
+    `<button style="border:none;background:${S.view===key?'#eef2ff':'transparent'};color:${S.view===key?'#4338ca':'#475569'};font-weight:700;font-size:12.5px;padding:9px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;" onclick="App.setView('${key}')">${label}</button>`).join('');
+  return `<div style="background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;flex-wrap:wrap;row-gap:6px;padding:8px 24px;gap:12px;">
     <div style="display:flex;gap:2px;flex:1 1 320px;min-width:0;overflow-x:auto;">${tabs}</div>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto;">
-      <select onchange="App.selectUser(this.value)" style="font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);outline:none;cursor:pointer;">
+    <div style="margin-left:auto;flex:0 0 auto;">
+      <select onchange="App.selectUser(this.value)" style="font-size:12.5px;font-weight:700;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;outline:none;cursor:pointer;">
         ${S.DEVS.map(d => `<option value="${d.id}" ${S.currentUserId===d.id?'selected':''}>Tôi là ${esc(d.name)}</option>`).join('')}
       </select>
-      <select style="font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);outline:none;cursor:pointer;max-width:230px;">
-        <option>${esc(S.PROJECT.name)}</option>
-      </select>
-      <button style="border:1px solid oklch(0.9 0.006 85);background:oklch(0.995 0.003 85);border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="App.backToSetup()">⚙ Thiết lập</button>
     </div></div>`;
 }
 
 function renderDashboard(){
-  const counts = assignedCountMap();
-  const maxCount = Math.max(1, ...Object.values(counts));
-  const assigned = Object.entries(S.assignments).filter(([,v])=>v);
-  const avgFit = Math.round(assigned.reduce((acc,[tid,devId])=>{
-    const t = S.TASKS.find(x=>x.id===tid), d = S.DEVS.find(x=>x.id===devId);
-    return acc + computeFit(t,d).score; }, 0) / Math.max(1, assigned.length));
-  const nLabsDone = Object.values(S.labCompleted).filter(v=>v===true).length;
-  const statCards = [
-    { label:'Lập trình viên', value: S.DEVS.length, hint:'Đã dựng hồ sơ năng lực' },
-    { label:'Bài Lab', value: S.LABS.length, hint: `${nLabsDone} đã hoàn thành` },
-    { label:'Fit Score TB', value: avgFit + '%', hint:'Trên các việc đã gán' },
-    { label:'Cân bằng khối lượng', value: (maxCount - Math.min(...Object.values(counts))) <= 1 ? 'Tốt' : 'Khá', hint:'Chênh lệch giữa các thành viên' },
-  ].map(s => `<div style="${card}border-radius:14px;padding:20px;">
-      <div style="font-size:12px;color:oklch(0.5 0.01 85);text-transform:uppercase;letter-spacing:0.04em;">${s.label}</div>
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:28px;margin-top:6px;">${s.value}</div>
-      <div style="font-size:12px;color:oklch(0.55 0.01 85);margin-top:4px;">${s.hint}</div></div>`).join('');
-  const workload = S.DEVS.map(d => `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-      <div style="width:100px;font-size:13px;font-weight:600;flex:0 0 auto;">${esc(d.name)}</div>
-      <div style="flex:1;height:10px;background:oklch(0.93 0.006 85);border-radius:6px;overflow:hidden;">
-        <div style="height:100%;border-radius:6px;width:${((counts[d.id]||0)/maxCount)*100}%;background:oklch(0.56 0.13 ${d.hue});"></div></div>
-      <div style="width:70px;font-size:12px;color:oklch(0.5 0.01 85);text-align:right;flex:0 0 auto;">${counts[d.id]||0} việc</div></div>`).join('');
-  const tech = S.PROJECT.techStack.map(t => `<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;">${esc(t)}</div>`).join('');
-  const navBtn = (view, label) => `<button style="text-align:left;padding:12px 14px;border-radius:10px;border:1px solid oklch(0.9 0.006 85);background:oklch(0.98 0.003 85);cursor:pointer;font-size:13px;font-weight:600;color:oklch(0.24 0.01 85);" onclick="App.setView('${view}')">${label}</button>`;
-  const warns = S.warnings.length ? `<div style="background:oklch(0.97 0.03 70);border:1px solid oklch(0.8 0.09 70);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.4 0.1 70);margin-bottom:20px;"><strong>Cảnh báo từ AI:</strong><br>${S.warnings.map(esc).join('<br>')}</div>` : '';
-  const notes = S.workloadNotes ? `<div style="background:oklch(0.95 0.02 285);border:1px solid oklch(0.82 0.06 285);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.38 0.09 285);margin-bottom:20px;"><strong>Ghi chú của AI về workload:</strong> ${esc(S.workloadNotes)}</div>` : '';
-  return `<div>
-    <div style="margin-bottom:24px;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Tổng quan nhóm dự án</div>
-      <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kết quả tổng hợp của ba luồng: phân tích lập trình viên, phân tích dự án và matching. Đây là đề xuất — trưởng nhóm quyết định cuối.</div>
-    </div>
+  const warns = S.warnings.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;font-size:12.5px;color:#92400e;margin-bottom:16px;"><strong>Cảnh báo từ AI:</strong><br>${S.warnings.map(esc).join('<br>')}</div>` : '';
+  const notes = S.workloadNotes ? `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:13px 16px;font-size:12.5px;color:#3730a3;margin-bottom:16px;"><strong>Ghi chú của AI về workload:</strong> ${esc(S.workloadNotes)}</div>` : '';
+  return `<div class="fadeIn">
+    ${renderDetailHeader()}
+    ${renderMetricCards()}
     ${warns}${notes}
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;">${statCards}</div>
-    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;">
-      <div style="${card}border-radius:14px;padding:22px;">
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:16px;">Khối lượng công việc theo thành viên</div>${workload}</div>
-      <div style="${card}border-radius:14px;padding:22px;">
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin-bottom:14px;">Công nghệ chính của dự án</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">${tech}</div>
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;margin:20px 0 10px;">Đi tới</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${navBtn('developers','Luồng 1 — Phân tích lập trình viên →')}
-          ${navBtn('graph','Sơ đồ kỹ năng nhóm →')}
-          ${navBtn('project','Luồng 2 — Bài Lab & Task Graph →')}
-          ${navBtn('matching','Luồng 3 — Matching & phân công →')}
-          ${navBtn('claim','Nhận việc (dành cho thành viên) →')}
-        </div></div></div></div>`;
+    ${renderOverviewSplit()}
+    ${renderSkillCoverage()}</div>`;
 }
 
 function renderDevelopers(){
   const allSkillNames = [...new Set(S.DEVS.flatMap(d => devSkills(d.id).map(sk => sk.name)))];
   const chips = ['all', ...allSkillNames].map(name =>
-    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 285)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(name)}</button>`).join('');
+    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(name)}</button>`).join('');
   const filtered = S.DEVS.filter(d => {
     const mS = d.name.toLowerCase().includes(S.devSearch.toLowerCase());
     const mK = S.devSkillFilter === 'all' || devSkills(d.id).some(sk => sk.name === S.devSkillFilter);
     return mS && mK;
   });
-  const list = filtered.map(d => `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;background:${S.selectedDevId===d.id?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};border:1px solid ${S.selectedDevId===d.id?'oklch(0.7 0.1 285)':'oklch(0.9 0.006 85)'};" onclick="App.selectDev('${d.id}')">
+  const list = filtered.map(d => `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;background:${S.selectedDevId===d.id?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};border:1px solid ${S.selectedDevId===d.id?'oklch(0.7 0.1 262)':'oklch(0.9 0.006 85)'};" onclick="App.selectDev('${d.id}')">
       <div style="${avatarStyle(d.hue,36,12)}">${esc(d.initials)}</div>
       <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;">${esc(d.name)}</div>
         <div style="font-size:12px;color:oklch(0.5 0.01 85);">${esc(d.roleSuited)}</div></div>
@@ -664,16 +781,16 @@ function renderDevelopers(){
   const skillBars = skills.map(sk => `<div style="margin-bottom:9px;">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk.name)}</span><span style="color:oklch(0.5 0.01 85);">${sk.level}%</span></div>
       <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;">
-        <div style="height:100%;background:oklch(0.56 0.15 285);border-radius:4px;width:${sk.level}%;"></div></div></div>`).join('');
+        <div style="height:100%;background:oklch(0.56 0.15 262);border-radius:4px;width:${sk.level}%;"></div></div></div>`).join('');
   const learning = (d.wantLearn||'').split(',').map(x=>x.trim()).filter(Boolean).map(l =>
     `<div style="background:oklch(0.93 0.05 175);color:oklch(0.35 0.12 175);font-size:12px;font-weight:600;padding:5px 10px;border-radius:16px;">${esc(l)}</div>`).join('') || '<span style="font-size:12px;color:oklch(0.55 0.01 85);">—</span>';
   const strengths = d.strengths.map(s => `<div style="font-size:12.5px;color:oklch(0.35 0.01 85);margin-bottom:6px;padding-left:14px;position:relative;"><span style="position:absolute;left:0;color:oklch(0.4 0.13 175);">＋</span>${esc(s)}</div>`).join('');
   const missing = d.missing.map(m => `<div style="font-size:12.5px;color:oklch(0.45 0.01 85);margin-bottom:6px;padding-left:14px;position:relative;"><span style="position:absolute;left:0;color:oklch(0.62 0.14 55);">－</span>${esc(m)}</div>`).join('');
   const path = d.learningPath.map((text,i) => `<div style="display:flex;gap:8px;font-size:12.5px;color:oklch(0.35 0.01 85);margin-bottom:8px;">
-      <div style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i+1}</div>
+      <div style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:oklch(0.93 0.03 262);color:oklch(0.4 0.13 262);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i+1}</div>
       <div>${esc(text)}</div></div>`).join('');
   const evidence = Object.entries(d.skillEvidence || {}).map(([k,v]) =>
-    `<div style="font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:4px;"><strong style="color:oklch(0.4 0.05 285);">${esc(k)}</strong>: ${esc(v)}</div>`).join('');
+    `<div style="font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:4px;"><strong style="color:oklch(0.4 0.05 262);">${esc(k)}</strong>: ${esc(v)}</div>`).join('');
   const pulse = S.animatingDevIds[d.id] ? 'animation: pulseGlow 0.7s ease-in-out infinite;' : '';
 
   return `<div>
@@ -725,7 +842,7 @@ function renderDevelopers(){
             <polygon points="${radar.grid50}" fill="none" stroke="oklch(0.92 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid25}" fill="none" stroke="oklch(0.94 0.006 85)" stroke-width="1"></polygon>
             ${radar.axisLines.map(ax => `<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.9 0.006 85)" stroke-width="1"></line>`).join('')}
-            <polygon points="${radar.valuePoints}" fill="oklch(0.56 0.15 285 / 0.22)" stroke="oklch(0.56 0.15 285)" stroke-width="2" style="${pulse}"></polygon>
+            <polygon points="${radar.valuePoints}" fill="oklch(0.56 0.15 262 / 0.22)" stroke="oklch(0.56 0.15 262)" stroke-width="2" style="${pulse}"></polygon>
             ${radar.labels.map(lb => `<text x="${lb.x}" y="${lb.y}" text-anchor="middle" font-size="10" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}</text>`).join('')}
           </svg>
           <div style="flex:1;">
@@ -751,6 +868,34 @@ function renderDevelopers(){
       </div></div></div>`;
 }
 
+function renderSkillCoverage(){
+  if (!S.SKILL_COVERAGE.length) return '';
+  const stMap = {
+    'có':    { bg:'oklch(0.93 0.05 175)', fg:'oklch(0.33 0.12 175)', label:'✓ Nhóm có' },
+    'gần có':{ bg:'oklch(0.95 0.05 70)',  fg:'oklch(0.42 0.12 70)',  label:'≈ Gần có' },
+    'thiếu': { bg:'oklch(0.95 0.05 25)',  fg:'oklch(0.45 0.14 25)',  label:'✕ Thiếu' },
+  };
+  const order = {'thiếu':0,'gần có':1,'có':2};
+  const rows = [...S.SKILL_COVERAGE].sort((a,b)=>(order[a.status]??3)-(order[b.status]??3)).map(c => {
+    const st = stMap[c.status] || stMap['thiếu'];
+    return `<div style="display:grid;grid-template-columns:170px 92px 1fr;gap:12px;padding:10px 4px;border-bottom:1px solid oklch(0.95 0.005 85);align-items:start;font-size:12.5px;">
+      <div style="font-weight:700;">${esc(c.skill)}</div>
+      <div><span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:10px;background:${st.bg};color:${st.fg};white-space:nowrap;">${st.label}</span></div>
+      <div style="color:oklch(0.4 0.01 85);line-height:1.45;">
+        ${c.covered_by.length ? c.covered_by.map(n=>`<span style="display:inline-block;background:oklch(0.95 0.02 262);color:oklch(0.38 0.1 262);font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:11px;margin:1px 4px 1px 0;">${esc(n)}</span>`).join('') : ''}
+        ${c.note ? `<div style="margin-top:3px;font-size:12px;color:oklch(0.5 0.01 85);">${esc(c.note)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div style="${card}border-radius:16px;padding:22px;margin-top:20px;">
+    <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;">Dự án cần gì — ai trong nhóm có?</div>
+    <div style="font-size:12.5px;color:oklch(0.5 0.01 85);margin:4px 0 12px;">AI so khớp theo ngữ nghĩa (VD: JavaScript/HTML che được việc dựng UI). Skill "thiếu" là rủi ro cần bàn trước khi chốt phân công.</div>
+    <div style="display:grid;grid-template-columns:170px 92px 1fr;gap:12px;font-size:11.5px;color:oklch(0.5 0.01 85);padding:0 4px 8px;border-bottom:1px solid oklch(0.9 0.006 85);">
+      <div>Kỹ năng dự án cần</div><div>Trạng thái</div><div>Ai có / nền tảng gần nhất / gợi ý</div></div>
+    ${rows}
+  </div>`;
+}
+
 function renderGraph(){
   const g = buildFlowGraph(S.DEVS, S.TASKS, S.PROJECT.name);
   const edges = g.edges.map(e => `<path d="${e.d}" fill="none" stroke="${e.stroke}" stroke-width="${e.strokeWidth}" stroke-opacity="${e.opacity}"></path>`).join('');
@@ -764,8 +909,8 @@ function renderGraph(){
       <text x="${n.textX}" y="${n.textY}" text-anchor="middle" font-size="12" font-family="Public Sans, sans-serif" font-weight="600" fill="${n.textFill}">${esc(n.name)}</text>
       <text x="${n.levelX}" y="${n.levelY}" font-size="10" font-family="Public Sans, sans-serif" font-weight="700" fill="${n.levelFill}">${n.levelLabel}</text></g>`).join('');
   const tasks = g.taskNodes.map(t => `<g>
-      <rect x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" rx="10" fill="oklch(0.97 0.02 285)" stroke="oklch(0.68 0.1 285)" stroke-width="1.8"></rect>
-      <text x="${t.textX}" y="${t.textY}" text-anchor="middle" font-size="12.5" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.34 0.11 285)">${esc(t.name)}</text></g>`).join('');
+      <rect x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" rx="10" fill="oklch(0.97 0.02 262)" stroke="oklch(0.68 0.1 262)" stroke-width="1.8"></rect>
+      <text x="${t.textX}" y="${t.textY}" text-anchor="middle" font-size="12.5" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.34 0.11 262)">${esc(t.name)}</text></g>`).join('');
   return `<div>
     <div style="margin-bottom:20px;">
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Sơ đồ kỹ năng nhóm</div>
@@ -775,8 +920,8 @@ function renderGraph(){
       <svg viewBox="${g.viewBox}" style="width:1320px;max-width:none;display:block;">
         ${g.headers.map(h => `<text x="${h.x}" y="22" text-anchor="middle" font-size="10.5" letter-spacing="1.2" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.62 0.01 85)">${h.label}</text>`).join('')}
         ${edges}
-        <g><rect x="${g.teamRoot.x}" y="${g.teamRoot.y}" width="${g.teamRoot.w}" height="${g.teamRoot.h}" rx="12" fill="oklch(0.94 0.03 285)" stroke="oklch(0.56 0.15 285)" stroke-width="2"></rect>
-        <text x="${g.teamRoot.textX}" y="${g.teamRoot.textY}" text-anchor="middle" font-size="14" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.36 0.14 285)">Cả nhóm</text></g>
+        <g><rect x="${g.teamRoot.x}" y="${g.teamRoot.y}" width="${g.teamRoot.w}" height="${g.teamRoot.h}" rx="12" fill="oklch(0.94 0.03 262)" stroke="oklch(0.56 0.15 262)" stroke-width="2"></rect>
+        <text x="${g.teamRoot.textX}" y="${g.teamRoot.textY}" text-anchor="middle" font-size="14" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.36 0.14 262)">Cả nhóm</text></g>
         ${members}${skills}${tasks}
         <g><rect x="${g.projectRoot.x}" y="${g.projectRoot.y}" width="${g.projectRoot.w}" height="${g.projectRoot.h}" rx="12" fill="oklch(0.94 0.04 175)" stroke="oklch(0.5 0.12 175)" stroke-width="2"></rect>
         <text x="${g.projectRoot.textX}" y="${g.projectRoot.textY}" text-anchor="middle" font-size="13" font-family="Sora, sans-serif" font-weight="700" fill="oklch(0.33 0.12 175)">Dự án</text>
@@ -786,7 +931,8 @@ function renderGraph(){
     <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:oklch(0.5 0.01 85);">
       <div>Độ dày nét nối từ thành viên = mức thành thạo</div>
       <div style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;border-radius:4px;background:oklch(0.96 0.04 55);border:1.5px solid oklch(0.7 0.13 55);display:inline-block;"></span>Kỹ năng dự án cần nhưng nhóm chưa có</div>
-    </div></div>`;
+    </div>
+    ${renderSkillCoverage()}</div>`;
 }
 
 function renderProject(){
@@ -795,16 +941,16 @@ function renderProject(){
     `<div style="background:oklch(0.97 0.03 70);border:1px solid oklch(0.8 0.09 70);border-radius:12px;padding:14px 16px;font-size:12.5px;color:oklch(0.4 0.1 70);margin-bottom:16px;">
       <strong>Thông tin dự án chưa đủ chắc (confidence: low) — AI cần hỏi thêm:</strong>
       <ul style="margin:8px 0 0 18px;padding:0;">${p.clarifyingQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>` : '';
-  const tech = p.techStack.map(t => `<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;">${esc(t)}</div>`).join('');
+  const tech = p.techStack.map(t => `<div style="background:oklch(0.93 0.03 262);color:oklch(0.4 0.13 262);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;">${esc(t)}</div>`).join('');
   const backlog = p.backlog.length ? p.backlog.map(b => `<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;border-bottom:1px solid oklch(0.95 0.005 85);">
       <div>${esc(b.title)}</div><div style="color:oklch(0.5 0.01 85);">${esc(b.module)}</div></div>`).join('')
     : '<div style="font-size:12.5px;color:oklch(0.55 0.01 85);">Không nhập backlog.</div>';
   const roadmap = p.roadmap.length ? p.roadmap.map(r => `<div style="display:flex;gap:10px;font-size:12.5px;padding:7px 0;border-bottom:1px solid oklch(0.95 0.005 85);">
-      <div style="font-weight:700;flex:0 0 78px;color:oklch(0.4 0.13 285);">${esc(r.phase)}</div><div>${esc(r.goal)}</div></div>`).join('')
+      <div style="font-weight:700;flex:0 0 78px;color:oklch(0.4 0.13 262);">${esc(r.phase)}</div><div>${esc(r.goal)}</div></div>`).join('')
     : '<div style="font-size:12.5px;color:oklch(0.55 0.01 85);">Không nhập roadmap.</div>';
   const modules = p.modules.map(m => `<div style="${card}border-radius:12px;padding:14px;font-size:13px;font-weight:600;text-align:center;">${esc(m)}</div>`).join('');
   const filters = ['all','Thấp','Trung bình','Cao'].map(df =>
-    `<button style="border:1px solid ${S.difficultyFilter===df?'oklch(0.56 0.15 285)':'oklch(0.9 0.006 85)'};background:${S.difficultyFilter===df?'oklch(0.93 0.03 285)':'oklch(0.995 0.003 85)'};color:${S.difficultyFilter===df?'oklch(0.4 0.13 285)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setDifficultyFilter('${df}')">${df==='all'?'Tất cả':df}</button>`).join('');
+    `<button style="border:1px solid ${S.difficultyFilter===df?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.difficultyFilter===df?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.difficultyFilter===df?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setDifficultyFilter('${df}')">${df==='all'?'Tất cả':df}</button>`).join('');
 
   const labsFiltered = S.LABS.filter(l => S.difficultyFilter === 'all' || l.difficulty === S.difficultyFilter);
   const dir = S.sortDir === 'asc' ? 1 : -1;
@@ -827,7 +973,7 @@ function renderProject(){
     const isAnimating = labTasks.some(t => S.assignments[t.id] && S.animatingDevIds[S.assignments[t.id]]);
     const progress = S.labProgress[lab.id] == null ? 100 : S.labProgress[lab.id];
     let buttonLabel = 'Hoàn thành Lab', buttonDisabled = false;
-    let btnBg = 'oklch(0.56 0.15 285)', btnColor = 'oklch(0.98 0.01 285)';
+    let btnBg = 'oklch(0.56 0.15 262)', btnColor = 'oklch(0.98 0.01 262)';
     if (completedState === true) { buttonLabel = `Đã hoàn thành ${progress}% ✓`; buttonDisabled = true; btnBg = 'oklch(0.93 0.05 175)'; btnColor = 'oklch(0.35 0.12 175)'; }
     else if (isAnimating) { buttonLabel = 'Đang hợp nhất kỹ năng...'; buttonDisabled = true; btnBg = 'oklch(0.93 0.006 85)'; btnColor = 'oklch(0.5 0.01 85)'; }
     else if (!allAssigned) { buttonLabel = 'Cần phân công đủ trước'; buttonDisabled = true; btnBg = 'oklch(0.93 0.006 85)'; btnColor = 'oklch(0.5 0.01 85)'; }
@@ -862,7 +1008,7 @@ function renderProject(){
           <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:${a.teamLevel >= a.reqLevel ? 'oklch(0.93 0.05 175);color:oklch(0.35 0.12 175)' : 'oklch(0.95 0.05 40);color:oklch(0.45 0.14 40)'};">${a.teamLevel >= a.reqLevel ? 'Đáp ứng' : 'Thiếu ' + (a.reqLevel - a.teamLevel) + '%'}</span>
         </div>
         <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;margin-bottom:3px;">
-          <div style="height:100%;border-radius:4px;width:${a.teamLevel}%;background:oklch(0.56 0.15 285);"></div></div>
+          <div style="height:100%;border-radius:4px;width:${a.teamLevel}%;background:oklch(0.56 0.15 262);"></div></div>
         <div style="height:4px;background:oklch(0.95 0.006 85);border-radius:4px;overflow:hidden;">
           <div style="height:100%;border-radius:4px;width:${a.reqLevel}%;background:oklch(0.62 0.14 40);"></div></div>
       </div>`).join('');
@@ -873,7 +1019,7 @@ function renderProject(){
           <div style="font-weight:700;font-size:14.5px;">${esc(lab.name)}</div>
           <div style="font-size:12px;color:oklch(0.5 0.01 85);margin-top:3px;max-width:520px;">${esc(lab.description)}</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;">
-            ${lab.requiredSkills.map(rs=>`<div style="background:oklch(0.93 0.03 285);color:oklch(0.4 0.13 285);font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;">${esc(rs)}</div>`).join('')}
+            ${lab.requiredSkills.map(rs=>`<div style="background:oklch(0.93 0.03 262);color:oklch(0.4 0.13 262);font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;">${esc(rs)}</div>`).join('')}
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:230px;">
@@ -884,7 +1030,7 @@ function renderProject(){
           <div style="width:100%;">
             <div style="display:flex;justify-content:space-between;font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:4px;">
               <span>Mức độ hoàn thành</span><span id="lab-progress-${lab.id}">${progress}%</span></div>
-            <input type="range" min="0" max="100" step="5" value="${progress}" oninput="App.setLabProgress('${lab.id}', this.value)" ${completedState?'disabled':''} style="width:100%;accent-color:oklch(0.56 0.15 285);" />
+            <input type="range" min="0" max="100" step="5" value="${progress}" oninput="App.setLabProgress('${lab.id}', this.value)" ${completedState?'disabled':''} style="width:100%;accent-color:oklch(0.56 0.15 262);" />
           </div>
           <button style="border:none;background:${btnBg};color:${btnColor};border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:700;cursor:${buttonDisabled?'default':'pointer'};white-space:nowrap;" onclick="App.completeLab('${lab.id}')" ${buttonDisabled?'disabled':''}>${buttonLabel}</button>
         </div>
@@ -897,7 +1043,7 @@ function renderProject(){
           <polygon points="${radar.grid25}" fill="none" stroke="oklch(0.95 0.006 85)" stroke-width="1"></polygon>
           ${radar.axisLines.map(ax=>`<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.91 0.006 85)" stroke-width="1"></line>`).join('')}
           <polygon points="${radar.reqPoints}" fill="oklch(0.62 0.14 40 / 0.14)" stroke="oklch(0.62 0.14 40)" stroke-width="2" stroke-dasharray="5 4"></polygon>
-          <polygon points="${radar.teamPoints}" fill="oklch(0.56 0.15 285 / 0.22)" stroke="oklch(0.56 0.15 285)" stroke-width="2.2"></polygon>
+          <polygon points="${radar.teamPoints}" fill="oklch(0.56 0.15 262 / 0.22)" stroke="oklch(0.56 0.15 262)" stroke-width="2.2"></polygon>
           ${radar.labels.map(lb=>`<g><text x="${lb.x}" y="${lb.y}" text-anchor="${lb.anchor}" font-size="11" font-family="Public Sans, sans-serif" font-weight="700" fill="oklch(0.32 0.01 85)">${esc(lb.name)}</text>
             <text x="${lb.x}" y="${lb.valueY}" text-anchor="${lb.anchor}" font-size="9.5" font-family="Public Sans, sans-serif" font-weight="600" fill="${lb.valueFill}">${lb.valueLabel}</text></g>`).join('')}
         </svg>
@@ -907,7 +1053,7 @@ function renderProject(){
             <div style="font-size:12.5px;color:oklch(0.45 0.01 85);">${meetsAll ? 'Nhóm đáp ứng đủ yêu cầu Lab' : 'Còn kỹ năng chưa đạt ngưỡng yêu cầu'}</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:14px;row-gap:6px;font-size:11.5px;color:oklch(0.5 0.01 85);margin-bottom:10px;">
-            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"><span style="width:12px;height:3px;background:oklch(0.56 0.15 285);display:inline-block;flex:0 0 auto;"></span>Năng lực nhóm (điểm cao nhất)</div>
+            <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"><span style="width:12px;height:3px;background:oklch(0.56 0.15 262);display:inline-block;flex:0 0 auto;"></span>Năng lực nhóm (điểm cao nhất)</div>
             <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap;"><span style="width:12px;height:3px;background:oklch(0.62 0.14 40);display:inline-block;flex:0 0 auto;"></span>Yêu cầu Lab (${reqLevel}%)</div>
           </div>
           ${supportCount > 0 ? `<div style="font-size:11px;color:oklch(0.58 0.01 85);margin-bottom:10px;">Đã thêm ${supportCount} trục kỹ năng phụ trợ (yêu cầu thấp hơn) để radar đọc được.</div>` : ''}
@@ -1007,7 +1153,7 @@ function renderMatching(){
         <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 3 — Matching Developer × Task</div>
         <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Kéo thả để chỉnh phân công. Nhấn vào thẻ để xem điểm từng tiêu chí và lý do của AI.</div>
       </div>
-      <button style="background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.resetAssignments()">Áp dụng phân bổ AI đề xuất</button>
+      <button style="background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.resetAssignments()">Áp dụng phân bổ AI đề xuất</button>
     </div>
     <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;margin-bottom:26px;">
       <div style="flex:0 0 240px;background:oklch(0.96 0.006 85);border:1px dashed oklch(0.82 0.008 85);border-radius:14px;padding:14px;min-height:420px;" ondragover="App.allowDrop(event)" ondrop="App.dropOnPool(event)">
@@ -1038,7 +1184,7 @@ function renderClaim(){
       <div style="font-size:12px;color:oklch(0.45 0.01 85);margin-top:5px;">${missing.length ? 'Sẽ học thêm: ' + esc(missing.join(', ')) : 'Bạn đã có đủ kỹ năng yêu cầu'}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:11px;">
         <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
-        <button style="background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border:none;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;" onclick="App.claimTask('${t.id}')">Nhận việc này</button>
+        <button style="background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border:none;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;" onclick="App.claimTask('${t.id}')">Nhận việc này</button>
       </div></div>`;
   }).join('') || `<div style="padding:26px;text-align:center;font-size:13px;color:oklch(0.55 0.01 85);">Không còn đầu việc trống — mọi việc đã có người nhận.</div>`;
   const mine = S.TASKS.filter(t => S.assignments[t.id] === S.currentUserId).map(t => {
@@ -1091,7 +1237,7 @@ function renderExplain(){
       const level = found ? found.level : 0;
       return `<div style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>${esc(sk)}</span><span style="color:oklch(0.5 0.01 85);">${found ? level + '%' : 'Chưa có'}</span></div>
-        <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:${level}%;background:${level>0?'oklch(0.56 0.15 285)':'oklch(0.85 0.01 85)'};"></div></div>
+        <div style="height:6px;background:oklch(0.93 0.006 85);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:${level}%;background:${level>0?'oklch(0.56 0.15 262)':'oklch(0.85 0.01 85)'};"></div></div>
       </div>`;
     }).join('');
   } else {
@@ -1121,14 +1267,14 @@ function renderExplain(){
 }
 
 function renderChat(){
-  const fab = `<button style="position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:oklch(0.56 0.15 285);border:none;color:oklch(0.98 0.01 285);font-size:20px;cursor:pointer;box-shadow:0 8px 20px oklch(0.2 0.01 85 / 0.2);z-index:50;" onclick="App.toggleChat()">💬</button>`;
+  const fab = `<button style="position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:oklch(0.56 0.15 262);border:none;color:oklch(0.98 0.01 262);font-size:20px;cursor:pointer;box-shadow:0 8px 20px oklch(0.2 0.01 85 / 0.2);z-index:50;" onclick="App.toggleChat()">💬</button>`;
   if (!S.chatOpen) return fab;
   const msgs = S.chatMessages.map(m => `<div style="${m.from==='ai'?'display:flex;justify-content:flex-start;':'display:flex;justify-content:flex-end;'}">
       <div style="${m.from==='ai'
-        ? 'background:oklch(0.94 0.01 285);color:oklch(0.3 0.05 285);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;max-width:85%;line-height:1.4;'
-        : 'background:oklch(0.56 0.15 285);color:white;padding:9px 12px;border-radius:12px 12px 3px 12px;font-size:12.5px;max-width:85%;line-height:1.4;'}">${esc(m.text)}</div>
+        ? 'background:oklch(0.94 0.01 262);color:oklch(0.3 0.05 262);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;max-width:85%;line-height:1.4;'
+        : 'background:oklch(0.56 0.15 262);color:white;padding:9px 12px;border-radius:12px 12px 3px 12px;font-size:12.5px;max-width:85%;line-height:1.4;'}">${esc(m.text)}</div>
     </div>`).join('');
-  const busy = S.chatBusy ? `<div style="display:flex;justify-content:flex-start;"><div style="background:oklch(0.94 0.01 285);color:oklch(0.45 0.05 285);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;">AI đang trả lời…</div></div>` : '';
+  const busy = S.chatBusy ? `<div style="display:flex;justify-content:flex-start;"><div style="background:oklch(0.94 0.01 262);color:oklch(0.45 0.05 262);padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:12.5px;">AI đang trả lời…</div></div>` : '';
   return `${fab}<div style="position:fixed;bottom:88px;right:24px;width:340px;height:440px;${card}border-radius:16px;box-shadow:0 12px 32px oklch(0.2 0.01 85 / 0.18);display:flex;flex-direction:column;z-index:50;">
     <div style="padding:14px 16px;border-bottom:1px solid oklch(0.9 0.006 85);display:flex;justify-content:space-between;align-items:center;">
       <div style="font-weight:700;font-size:13.5px;">Trợ lý AI</div>
@@ -1137,24 +1283,510 @@ function renderChat(){
     <div id="chat-scroll" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">${msgs}${busy}</div>
     <div style="padding:12px;border-top:1px solid oklch(0.9 0.006 85);display:flex;gap:8px;">
       <input id="chat-input" type="text" placeholder="Hỏi AI về phân công..." value="${esc(S.chatInput)}" onchange="App.setChatInput(this.value)" onkeydown="App.chatKey(event)" style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid oklch(0.9 0.006 85);font-size:13px;outline:none;" />
-      <button style="border:none;background:oklch(0.56 0.15 285);color:oklch(0.98 0.01 285);border-radius:9px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.sendChat()">Gửi</button>
+      <button style="border:none;background:oklch(0.56 0.15 262);color:oklch(0.98 0.01 262);border-radius:9px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;" onclick="App.sendChat()">Gửi</button>
+    </div></div>`;
+}
+
+/* ================= New UI: login / navbar / overview / summary / tickets / coach ================= */
+function workloadShares(){
+  const per = {}; S.DEVS.forEach(d => per[d.id] = 0);
+  let total = 0;
+  Object.entries(S.assignments).forEach(([tid, did]) => {
+    if (!did) return;
+    const t = S.TASKS.find(x=>x.id===tid); const days = t ? (t.estimateDays||0) : 0;
+    total += days; per[did] = (per[did]||0) + days;
+  });
+  const shares = {};
+  S.DEVS.forEach(d => shares[d.id] = total > 0 ? Math.round(per[d.id]/total*100) : 0);
+  let balance = 0;
+  if (total > 0 && S.DEVS.length) {
+    const vals = S.DEVS.map(d => per[d.id]/total);
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const cv = mean ? Math.sqrt(vals.reduce((a,v)=>a+(v-mean)*(v-mean),0)/vals.length)/mean : 1;
+    balance = Math.max(0, Math.round(100*(1-cv)));
+  }
+  return { shares, balance, totalDays: total };
+}
+function avgFitScore(){
+  const assigned = Object.entries(S.assignments).filter(([,v])=>v);
+  if (!assigned.length) return 0;
+  return Math.round(assigned.reduce((acc,[tid,did])=>{
+    const t = S.TASKS.find(x=>x.id===tid), d = S.DEVS.find(x=>x.id===did);
+    return acc + (t && d ? computeFit(t,d).score : 0); }, 0) / assigned.length);
+}
+function statusTag(st){
+  const map = { 'Approved':['#dcfce7','#15803d','✓ Coach đã phê duyệt'],
+    'Needs Revision':['#fee2e2','#b91c1c','⚠ Yêu cầu phân công lại'],
+    'Analyzed':['#fef9c3','#a16207','Phân tích AI'] };
+  const [bg,fg,label] = map[st] || map['Analyzed'];
+  return `<span style="background:${bg};color:${fg};font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;">${label}</span>`;
+}
+function balanceRing(value, size){
+  size = size || 58; const sw = 6, r = (size-sw)/2, c = 2*Math.PI*r;
+  const off = c - (value/100)*c;
+  const color = value > 70 ? '#10b981' : value >= 50 ? '#f59e0b' : '#ef4444';
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:0 0 auto;">
+    <svg width="${size}" height="${size}" style="transform:rotate(-90deg);">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="#e2e8f0" stroke-width="${sw}" fill="none"></circle>
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="${color}" stroke-width="${sw}" fill="none"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" stroke-linecap="round"></circle>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${color};">${value}%</div>
+  </div>`;
+}
+
+function renderLogin(){
+  const feature = (title, text, color) => `<div style="display:flex;gap:10px;align-items:flex-start;">
+    <div style="width:18px;height:18px;border-radius:50%;background:${color};flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:900;">✓</div>
+    <div><div style="font-size:13px;font-weight:800;color:#fff;">${title}</div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:2px;">${text}</div></div></div>`;
+  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#1e1b4b 100%);position:relative;overflow:hidden;">
+    <div style="position:absolute;top:-120px;left:-120px;width:380px;height:380px;border-radius:50%;background:rgba(37,99,235,.18);filter:blur(70px);"></div>
+    <div style="position:absolute;bottom:-120px;right:-120px;width:380px;height:380px;border-radius:50%;background:rgba(124,58,237,.18);filter:blur(70px);"></div>
+    <div style="max-width:960px;width:100%;display:grid;grid-template-columns:1.1fr 1fr;gap:44px;align-items:center;position:relative;z-index:1;">
+      <div>
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);color:#93c5fd;font-size:11.5px;font-weight:700;">✦ AI-Powered Lab Workload Optimizer</div>
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:36px;line-height:1.15;color:#fff;margin-top:16px;">Tối ưu hóa bài lab nhóm bằng <span style="background:linear-gradient(90deg,#60a5fa,#a5b4fc,#c084fc);-webkit-background-clip:text;background-clip:text;color:transparent;">Trí tuệ Nhân tạo</span></div>
+        <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-top:14px;">Hệ thống đọc GitHub thật của từng thành viên, tự đọc README bài lab, khớp năng lực với từng phần việc và đề xuất phân công cân bằng — kèm bằng chứng, không bịa.</div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:22px;">
+          ${feature('Chế độ Học viên','Điền tên + GitHub username + repo bài lab, AI dựng hồ sơ kỹ năng và sơ đồ phân công chi tiết.','#10b981')}
+          ${feature('Chế độ Lab Coach','Theo dõi các nhóm đã phân tích, độ cân bằng, phê duyệt phân công và trả lời ticket hỗ trợ.','#6366f1')}
+        </div>
+      </div>
+      <div class="card2" style="padding:28px;border-radius:20px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#6366f1);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;color:#fff;font-size:20px;">✦</div>
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:21px;">Đăng nhập Hệ thống</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px;">Chọn vai trò tương ứng của bạn — demo không cần mật khẩu</div>
+        </div>
+        <button style="width:100%;border:none;cursor:pointer;background:linear-gradient(90deg,#2563eb,#4f46e5);color:#fff;border-radius:14px;padding:15px;font-size:14px;font-weight:800;margin-bottom:10px;" onclick="App.login('student')">👤 Đăng nhập với vai trò Học viên</button>
+        <button style="width:100%;cursor:pointer;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:14px;padding:15px;font-size:14px;font-weight:800;" onclick="App.login('coach')">🛡️ Đăng nhập với vai trò Lab Coach</button>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;line-height:1.55;">
+          Học viên: nhập nhóm → AI phân tích → xem phân công, radar kỹ năng, gửi ticket khi kẹt.<br>
+          Lab Coach: xem mọi nhóm, tỉ lệ cân bằng, phê duyệt & trả lời ticket.
+        </div>
+      </div>
+    </div></div>`;
+}
+
+function renderNavbar(){
+  if (!S.user) return '';
+  const inApp = S.stage === 'app';
+  const rolePill = `<div style="background:#f1f5f9;padding:4px;border-radius:12px;display:flex;border:1px solid #e2e8f0;">
+    <button class="pill-btn" style="background:${S.role==='student'?'#fff':'transparent'};color:${S.role==='student'?'#2563eb':'#475569'};box-shadow:${S.role==='student'?'0 1px 2px rgba(15,23,42,.08)':'none'};" onclick="App.switchRole('student')">👤 Học viên</button>
+    <button class="pill-btn" style="background:${S.role==='coach'?'#4f46e5':'transparent'};color:${S.role==='coach'?'#fff':'#475569'};" onclick="App.switchRole('coach')">🛡️ Lab Coach</button>
+  </div>`;
+  return `<div style="position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="${S.role==='coach'?'App.backToCoach()':'App.backToSetup()'}">
+      <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#2563eb,#6366f1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">✦</div>
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:16px;letter-spacing:-0.01em;">AI Lab Team</div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      ${inApp && S.role==='student' ? `<button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;" onclick="App.backToSetup()">↻ Tạo phân công mới</button>` : ''}
+      ${rolePill}
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:12px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">${S.role==='coach'?'LC':'HV'}</div>
+        <div><div style="font-size:12px;font-weight:800;line-height:1.2;">${esc(S.user.name)}</div>
+        <div style="font-size:10px;color:#2563eb;font-weight:600;">${esc(S.user.dept)}</div></div>
+      </div>
+      <button class="pill-btn" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;" onclick="App.logout()">Đăng xuất</button>
+    </div></div>`;
+}
+
+function renderDetailHeader(){
+  const p = S.PROJECT;
+  const pendingCount = S.tickets.filter(t=>t.status==='pending').length;
+  return `<div class="card2" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${S.role==='coach' ? `<button class="pill-btn" style="background:#f1f5f9;color:#334155;" onclick="App.backToCoach()">← Danh sách nhóm</button>` : ''}
+        ${S.groupId ? `<span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;font-family:monospace;">Nhóm #${esc(S.groupId)}</span>` : ''}
+        ${statusTag(S.groupStatus)}
+        ${S.createdAt ? `<span style="font-size:11.5px;color:#64748b;">Tạo lúc: ${esc(S.createdAt)}</span>` : ''}
+      </div>
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:21px;margin-top:6px;">${esc(p.name)}</div>
+      ${S.coachFeedback ? `<div style="margin-top:8px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:9px 12px;font-size:12.5px;color:#3730a3;"><strong>💬 Coach:</strong> ${esc(S.coachFeedback)}</div>` : ''}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      ${S.role==='coach' ? `<button class="pill-btn" style="background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;padding:10px 16px;" onclick="App.openCoachModal()">💬 Đánh giá từ Coach</button>` : ''}
+      <button class="pill-btn" style="background:#4f46e5;color:#fff;padding:10px 16px;" onclick="App.openTicketModal()">🛟 Raise Ticket</button>
+      <button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;padding:10px 14px;" onclick="App.set('view','tickets')">Tickets ${pendingCount?`<span style="background:#f43f5e;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:2px;">${pendingCount}</span>`:''}</button>
+    </div></div>`;
+}
+
+function renderMetricCards(){
+  const ws = workloadShares();
+  const avg = avgFitScore();
+  const mk = (icon, iconBg, iconFg, value, label, sub, subColor) => `<div class="card2" style="padding:18px;display:flex;gap:14px;align-items:center;">
+    <div style="width:46px;height:46px;border-radius:13px;background:${iconBg};color:${iconFg};display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;">${icon}</div>
+    <div style="min-width:0;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:20px;">${value}</div>
+      <div style="font-size:11.5px;color:#64748b;font-weight:600;">${label}</div>
+      <div style="font-size:11px;font-weight:700;color:${subColor};margin-top:2px;">${sub}</div>
+    </div></div>`;
+  const balColor = ws.balance > 70 ? '#059669' : ws.balance >= 50 ? '#d97706' : '#dc2626';
+  const balLabel = ws.balance > 70 ? '✓ Rất cân bằng (>70%)' : ws.balance >= 50 ? 'Trung bình (50–70%)' : '⚠ Mất cân bằng (<50%)';
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
+    ${mk('👥','#dbeafe','#1d4ed8', S.DEVS.length + ' Học viên','Số lượng thành viên nhóm','Hồ sơ dựng từ GitHub thật','#059669')}
+    ${mk('📘','#e0e7ff','#4338ca', S.TASKS.length + ' Module', esc(S.PROJECT.name), S.LABS.length + ' bài lab tương ứng','#4f46e5')}
+    ${mk('📈','#fef3c7','#b45309', avgFitScore() + '%','Độ fit trung bình năng lực','★ ' + (avg>=90?'Rất cao':avg>=75?'Khá tốt':'Cần xem lại'),'#b45309')}
+    ${mk('📊','#d1fae5','#047857', ws.balance + '%','Tỉ lệ cân bằng khối lượng', balLabel, balColor)}
+  </div>`;
+}
+
+function renderOverviewSplit(){
+  const ws = workloadShares();
+  // LEFT: task cards colored by assigned member
+  const taskCards = S.TASKS.map(t => {
+    const dev = S.DEVS.find(d => d.id === S.assignments[t.id]);
+    const col = dev ? devColor(dev) : {hex:'#94a3b8', bg:'#f8fafc', border:'#e2e8f0'};
+    const hl = S.hoverTaskId === t.id || (dev && S.hoverDevId === dev.id);
+    const fit = dev ? computeFit(t, dev) : null;
+    const lab = S.LABS.find(l => l.id === t.labId);
+    return `<div class="task-card" onmouseenter="App.hoverTask('${t.id}','${dev?dev.id:''}')" onmouseleave="App.hoverClear()" onclick="App.openExplain(event,'${t.id}',${dev?`'${dev.id}'`:'null'})"
+      style="border:1px solid ${hl?col.hex:'#e2e8f0'};border-left:6px solid ${col.hex};background:${hl?col.bg:'#fff'};padding:15px;box-shadow:${hl?'0 4px 14px rgba(15,23,42,.08)':'none'};">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:6px;background:${col.hex};color:#fff;font-size:11px;font-weight:800;padding:4px 11px;border-radius:16px;">👤 ${dev?esc(dev.name):'Chưa phân công'}</span>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;font-weight:600;">
+          <span>🕐 ${esc(t.time)}</span>
+          ${fit ? `<span style="${fitBadgeStyle(fit.score)}">Fit ${fit.score}%</span>` : ''}
+        </div>
+      </div>
+      <div style="font-weight:800;font-size:13.5px;margin-top:9px;">${esc(t.name)}</div>
+      ${lab ? `<div style="font-size:12px;color:#475569;line-height:1.5;background:#f8fafc;border:1px solid #f1f5f9;border-radius:10px;padding:9px 11px;margin-top:8px;">${esc(lab.description)}</div>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;flex-wrap:wrap;">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <span style="font-size:10.5px;font-weight:800;color:#64748b;margin-right:2px;">Kỹ năng:</span>
+          ${t.skills.map(s=>`<span style="background:#dbeafe;color:#1d4ed8;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:7px;">${esc(s)}</span>`).join('')}
+        </div>
+        <span style="${difficultyStyle(t.difficulty)}">${t.difficulty}</span>
+      </div>
+    </div>`;
+  }).join('');
+  // RIGHT: segmented workload bar + legend + member cards
+  const segs = S.DEVS.map(d => {
+    const col = devColor(d); const share = ws.shares[d.id] || 0;
+    const active = S.hoverDevId === d.id;
+    const dim = S.hoverDevId && !active;
+    return share > 0 ? `<div class="${dim?'dim':''}" style="width:${share}%;background:${col.hex};${active?'transform:scaleY(1.12);':''}" title="${esc(d.name)}: ${share}%"
+      onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()">${share>=12?share+'%':''}</div>` : '';
+  }).join('');
+  const legend = S.DEVS.map(d => {
+    const col = devColor(d); const share = ws.shares[d.id]||0;
+    return `<button onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:10px;font-size:11.5px;font-weight:700;cursor:pointer;background:${col.bg};color:${col.hex};border:1px solid ${col.border};${S.hoverDevId===d.id?'box-shadow:0 0 0 2px '+col.border+';':''}">
+      <span style="width:9px;height:9px;border-radius:50%;background:${col.hex};display:inline-block;"></span>${esc(d.name)} (${share}%)</button>`;
+  }).join('');
+  const memberCards = S.DEVS.map(d => {
+    const col = devColor(d);
+    const myTasks = S.TASKS.filter(t => S.assignments[t.id] === d.id);
+    const avg = myTasks.length ? Math.round(myTasks.reduce((a,t)=>a+computeFit(t,d).score,0)/myTasks.length) : 0;
+    const hl = S.hoverDevId === d.id || myTasks.some(t=>t.id===S.hoverTaskId);
+    return `<div onmouseenter="App.hoverDev('${d.id}')" onmouseleave="App.hoverClear()" onclick="S.selectedDevId='${d.id}';App.setView('developers')"
+      style="border:1px solid ${hl?col.hex:'#e2e8f0'};background:${hl?col.bg:'#fff'};border-radius:14px;padding:13px;cursor:pointer;transition:all .15s;${hl?'box-shadow:0 4px 12px rgba(15,23,42,.08);':''}">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="position:relative;flex:0 0 auto;">
+          <div style="width:40px;height:40px;border-radius:50%;background:${col.bg};border:2px solid ${col.hex};color:${col.hex};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;">${esc(d.initials)}</div>
+          <span style="position:absolute;bottom:-4px;right:-6px;background:${col.hex};color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;">${ws.shares[d.id]||0}%</span>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:800;font-size:13px;">${esc(d.name)}</div>
+          <div style="font-size:10.5px;color:#64748b;font-weight:600;">@${esc(d.github||'—')} · ${esc(d.roleSuited)}</div>
+        </div>
+        <span style="background:${col.bg};color:${col.hex};border:1px solid ${col.border};font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;">Fit: ${avg}%</span>
+      </div>
+      ${myTasks.length ? `<div style="margin-top:9px;display:flex;flex-direction:column;gap:5px;">${myTasks.map(t=>`<div style="background:#f8fafc;border:1px solid #f1f5f9;border-radius:9px;padding:7px 9px;font-size:11.5px;"><strong>📍 ${esc(t.name)}</strong> <span style="color:#64748b;">· ${esc(t.time)}</span></div>`).join('')}</div>`
+        : `<div style="margin-top:9px;font-size:11.5px;color:#94a3b8;font-style:italic;">Chưa nhận việc nào</div>`}
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:6fr 4fr;gap:18px;align-items:start;">
+    <div class="card2" style="padding:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Mô tả công việc & Highlight thành viên</div>
+      <div style="font-size:12px;color:#64748b;margin:3px 0 14px;">Rê chuột vào từng phần việc để xem ai phụ trách (tô màu theo thành viên). Nhấn để xem giải thích của AI.</div>
+      <div style="display:flex;flex-direction:column;gap:11px;">${taskCards}</div>
+    </div>
+    <div class="card2" style="padding:20px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Tỉ lệ phân công công việc</div>
+      <div style="font-size:12px;color:#64748b;margin:3px 0 12px;">Thanh màu = % khối lượng (theo ngày công ước tính) của từng thành viên.</div>
+      <div class="seg-bar">${segs || '<div style="width:100%;background:#e2e8f0;color:#64748b;">Chưa có phân công</div>'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">${legend}</div>
+      <div style="font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;">Danh sách thành viên & nhiệm vụ</div>
+      <div style="display:flex;flex-direction:column;gap:9px;">${memberCards}</div>
+    </div>
+  </div>`;
+}
+
+function renderSummaryTab(){
+  const p = S.PROJECT;
+  const objectives = (p.objectives||[]).map(o=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#334155;margin-bottom:7px;">
+    <span style="color:#059669;font-weight:900;flex:0 0 auto;">✓</span><span>${esc(o)}</span></div>`).join('')
+    || '<div style="font-size:12.5px;color:#94a3b8;">AI chưa trích được mục tiêu — tài liệu repo có thể quá mỏng.</div>';
+  const conf = p.confidence === 'low' && p.clarifyingQuestions.length ?
+    `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#92400e;margin-top:14px;">
+      <strong>Thông tin chưa đủ chắc (confidence: low) — AI cần hỏi thêm:</strong>
+      <ul style="margin:8px 0 0 18px;padding:0;">${p.clarifyingQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>` : '';
+  return `<div class="card2 fadeIn" style="padding:24px;">
+    <div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:#94a3b8;font-family:monospace;">
+      📄 README.md · Tóm tắt do AI đọc và tổng hợp</div>
+    <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:19px;margin-top:8px;">Tóm tắt bài lab: ${esc(p.name)}</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:#64748b;">
+      <span>Loại: <strong style="color:#0f172a;">${esc(p.type)}</strong></span>
+      <span>Quy mô: <strong style="color:#0f172a;">${esc(p.scale)}</strong></span>
+      <span>Kiến trúc: <strong style="color:#0f172a;">${esc(p.architecture)}</strong></span>
+    </div>
+    <div style="margin-top:14px;font-size:13.5px;color:#334155;line-height:1.65;background:#f8fafc;border-left:4px solid #6366f1;border-radius:10px;padding:14px 16px;">
+      ${esc(p.summary || p.description || 'Chưa có tóm tắt — hãy chạy phân tích với repo có README.')}
+    </div>
+    <div style="font-weight:800;font-size:13px;margin:18px 0 8px;">## Mục tiêu chung cần đạt</div>
+    ${objectives}
+    <div style="font-weight:800;font-size:13px;margin:18px 0 8px;">Công nghệ chính</div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;">${p.techStack.map(t=>`<span style="background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:700;padding:5px 12px;border-radius:16px;">${esc(t)}</span>`).join('')}</div>
+    ${(p.sourcesRead && p.sourcesRead.length) ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #f1f5f9;">
+      <span style="font-size:11.5px;font-weight:800;color:#475569;margin-right:6px;">AI đã tự đọc từ repo:</span>
+      ${p.sourcesRead.map(f=>`<span style="display:inline-block;background:#d1fae5;color:#047857;font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;margin:2px 4px 2px 0;">📄 ${esc(f)}</span>`).join('')}</div>` : ''}
+    ${conf}
+  </div>`;
+}
+
+function renderTicketList(isCoach){
+  const filtered = S.ticketFilter === 'all' ? S.tickets : S.tickets.filter(t=>t.status===S.ticketFilter);
+  const pills = [['all','Tất cả ('+S.tickets.length+')','#0f172a','#fff'],
+    ['pending','Chưa xong ('+S.tickets.filter(t=>t.status==='pending').length+')','#fff','#f59e0b'],
+    ['resolved','Đã xong ('+S.tickets.filter(t=>t.status==='resolved').length+')','#fff','#059669']]
+    .map(([key,label]) => {
+      const on = S.ticketFilter===key;
+      const bg = key==='all' ? (on?'#fff':'transparent') : key==='pending' ? (on?'#f59e0b':'transparent') : (on?'#059669':'transparent');
+      const fg = key==='all' ? '#0f172a' : on ? '#fff' : '#475569';
+      return `<button class="pill-btn" style="background:${bg};color:${fg};${on&&key==='all'?'box-shadow:0 1px 2px rgba(15,23,42,.1);':''}" onclick="App.setTicketFilter('${key}')">${label}</button>`;
+    }).join('');
+  const items = filtered.length ? filtered.map(t => {
+    const done = t.status === 'resolved';
+    return `<div onclick="App.openTicketDetail('${t.id}')" style="border:1px solid ${done?'#a7f3d0':'#e2e8f0'};background:${done?'rgba(209,250,229,.25)':'#fff'};border-radius:16px;padding:15px 17px;cursor:pointer;display:flex;gap:13px;align-items:flex-start;transition:all .15s;">
+      ${isCoach ? `<button title="${done?'Chuyển về Chưa xong':'Đánh dấu Đã xong'}" onclick="App.toggleTicket(event,'${t.id}')"
+        style="flex:0 0 auto;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid ${done?'#059669':'#cbd5e1'};background:${done?'#10b981':'#f1f5f9'};color:${done?'#fff':'#94a3b8'};">✓</button>` : ''}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+          <span style="font-family:monospace;font-weight:800;font-size:11px;color:#4338ca;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 8px;border-radius:7px;">#${esc(t.id)}</span>
+          ${t.labName?`<span style="background:#f3e8ff;color:#7c3aed;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:7px;">${esc(t.labName)}</span>`:''}
+          ${t.priority==='high'?'<span style="background:#fee2e2;color:#b91c1c;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:7px;">Gấp</span>':''}
+        </div>
+        <div style="font-size:12.5px;font-weight:600;color:${done?'#64748b':'#1e293b'};margin-top:6px;line-height:1.5;${done?'text-decoration:line-through;':''}">"${esc(t.issue)}"</div>
+        <div style="display:flex;gap:10px;font-size:11px;color:#64748b;margin-top:6px;flex-wrap:wrap;">
+          <span>👤 <strong>${esc(t.studentName||'—')}</strong></span>
+          ${t.groupId?`<span style="font-family:monospace;color:#4f46e5;font-weight:700;">Nhóm #${esc(t.groupId)}</span>`:''}
+          <span>🕐 ${esc(t.createdAt)}</span>
+        </div>
+        ${t.coachResponse?`<div style="margin-top:7px;background:#eef2ff;border:1px solid #e0e7ff;border-radius:9px;padding:7px 10px;font-size:11.5px;color:#3730a3;"><strong>💬 Coach:</strong> ${esc(t.coachResponse)}</div>`:''}
+      </div>
+      <div style="flex:0 0 auto;">${done
+        ? '<span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;">✓ Đã xong</span>'
+        : '<span style="background:#ffedd5;color:#c2410c;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;">⏳ Chưa xong</span>'}</div>
+    </div>`;
+  }).join('') : `<div style="text-align:center;padding:40px;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;font-size:13px;">Không có ticket nào trong danh mục này.</div>`;
+  return { pills, items };
+}
+
+function renderTicketsTab(){
+  const { pills, items } = renderTicketList(S.role === 'coach');
+  return `<div class="card2 fadeIn" style="padding:22px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid #f1f5f9;margin-bottom:16px;">
+      <div>
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:16px;">🛟 Tickets hỗ trợ của nhóm</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">${S.role==='coach'?'Nhấp dấu tích để đánh dấu xong nhanh, hoặc nhấp vào ticket để phản hồi chi tiết.':'Theo dõi các yêu cầu hỗ trợ đã gửi cho Lab Coach và phản hồi.'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="background:#f1f5f9;padding:4px;border-radius:12px;display:flex;gap:2px;">${pills}</div>
+        <button class="pill-btn" style="background:#4f46e5;color:#fff;padding:9px 14px;" onclick="App.openTicketModal()">＋ Raise Ticket</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">${items}</div>
+  </div>`;
+}
+
+function renderCoach(){
+  const tab = S.page === 'tickets' ? 'tickets' : 'groups';
+  const pending = S.tickets.filter(t=>t.status==='pending').length;
+  const header = `<div class="card2" style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:21px;">Bảng điều khiển Lab Coach</div>
+        <span style="background:#eef2ff;color:#4338ca;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;">🛡️ Coach</span>
+      </div>
+      <div style="font-size:12.5px;color:#64748b;margin-top:4px;">Quản lý các nhóm bài lab đã phân tích và giải quyết ticket hỗ trợ từ học viên.</div>
+    </div>
+    <div style="background:#f1f5f9;padding:5px;border-radius:14px;display:flex;gap:3px;">
+      <button class="pill-btn" style="background:${tab==='groups'?'#fff':'transparent'};color:${tab==='groups'?'#0f172a':'#475569'};padding:10px 16px;${tab==='groups'?'box-shadow:0 1px 2px rgba(15,23,42,.1);':''}" onclick="App.setCoachTab('groups')">📚 Danh sách nhóm lab</button>
+      <button class="pill-btn" style="background:${tab==='tickets'?'#4f46e5':'transparent'};color:${tab==='tickets'?'#fff':'#475569'};padding:10px 16px;" onclick="App.setCoachTab('tickets')">🛟 Tickets hỗ trợ ${pending?`<span style="background:#f43f5e;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;">${pending}</span>`:''}</button>
+    </div>
+  </div>`;
+
+  let body = '';
+  if (tab === 'groups') {
+    const stat = (label, value, color, bg, icon) => `<div class="card2" style="padding:16px;display:flex;align-items:center;justify-content:space-between;">
+      <div><div style="font-size:11.5px;color:#64748b;font-weight:700;">${label}</div>
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:20px;color:${color};margin-top:2px;">${value}</div></div>
+      <div style="width:38px;height:38px;border-radius:11px;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:17px;">${icon}</div></div>`;
+    const stats = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;">
+      ${stat('Tổng nhóm đã phân tích', S.groups.length + ' Nhóm', '#0f172a', '#e0e7ff','📚')}
+      ${stat('Cân bằng cao (>70%)', S.groups.filter(g=>g.balanceRatio>70).length + ' Nhóm', '#059669','#d1fae5','✓')}
+      ${stat('Trung bình (50–70%)', S.groups.filter(g=>g.balanceRatio>=50&&g.balanceRatio<=70).length + ' Nhóm', '#d97706','#fef3c7','📈')}
+      ${stat('Cần điều chỉnh (<50%)', S.groups.filter(g=>g.balanceRatio<50).length + ' Nhóm', '#dc2626','#fee2e2','⚠')}
+    </div>`;
+    const groupCards = S.groups.length ? S.groups.map((g, idx) => `
+      <div class="card2" style="padding:16px;cursor:pointer;transition:all .15s;" onclick="App.openGroup('${g.id}')"
+        onmouseenter="this.style.boxShadow='0 6px 18px rgba(15,23,42,.1)'" onmouseleave="this.style.boxShadow=''">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-family:monospace;font-weight:800;font-size:11px;color:#1d4ed8;background:#dbeafe;padding:3px 9px;border-radius:7px;">#${esc(g.id)}</span>
+          ${statusTag(g.status)}
+        </div>
+        <div style="font-weight:800;font-size:13.5px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(g.projectName || g.repoUrl || 'Nhóm chưa đặt tên')}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px;">${esc(g.createdAt)} · ${g.taskCount} module</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border:1px solid #f1f5f9;border-radius:12px;padding:10px 12px;margin-top:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">${balanceRing(g.balanceRatio)}
+            <div><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;">Cân bằng</div>
+            <div style="font-size:12px;font-weight:800;">${g.balanceRatio}%</div></div></div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;font-weight:800;">Fit: ${g.avgFitScore}%</div>
+            <div style="font-size:11px;color:#64748b;">${g.memberCount} thành viên</div></div>
+        </div>
+        <div style="display:flex;gap:5px;overflow-x:auto;margin-top:9px;padding-bottom:2px;">
+          ${(g.memberNames||[]).map((n,i)=>`<span style="flex:0 0 auto;background:#f1f5f9;border-left:3px solid ${COLORS[i%COLORS.length].hex};font-size:10.5px;font-weight:700;color:#334155;padding:3px 8px;border-radius:5px;">${esc(n)}</span>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f1f5f9;margin-top:10px;padding-top:9px;font-size:11.5px;font-weight:800;color:#4f46e5;">
+          <span>Xem chi tiết phân công</span><span>→</span></div>
+      </div>`).join('')
+      : `<div style="grid-column:1/-1;text-align:center;padding:48px;color:#94a3b8;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:16px;font-size:13px;">Chưa có nhóm nào được phân tích. Chuyển sang vai trò Học viên để tạo phân tích đầu tiên.</div>`;
+    body = `${stats}
+      <div class="card2" style="padding:20px;margin-top:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-bottom:12px;border-bottom:1px solid #f1f5f9;margin-bottom:14px;">
+          <div>
+            <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Danh sách nhóm đã phân tích</div>
+            <div style="font-size:12px;color:#64748b;">Nhấp vào một nhóm để xem phân công chi tiết, radar kỹ năng và đánh giá.</div>
+          </div>
+          <div style="display:flex;gap:12px;font-size:11.5px;font-weight:700;">
+            <span style="color:#059669;">● &gt;70%</span><span style="color:#d97706;">● 50–70%</span><span style="color:#dc2626;">● &lt;50%</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">${groupCards}</div>
+      </div>`;
+  } else {
+    const { pills, items } = renderTicketList(true);
+    body = `<div class="card2" style="padding:22px;margin-top:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid #f1f5f9;margin-bottom:16px;">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:16px;">🛟 Danh sách tickets hỗ trợ từ học viên</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px;">Nhấp dấu tích để đánh dấu xong nhanh, hoặc nhấp vào ticket để xem chi tiết và phản hồi.</div>
+        </div>
+        <div style="background:#f1f5f9;padding:4px;border-radius:12px;display:flex;gap:2px;">${pills}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">${items}</div>
+    </div>`;
+  }
+  return `<div style="max-width:1280px;margin:0 auto;padding:24px 24px 60px;" class="fadeIn">${header}${body}</div>`;
+}
+
+/* ---------- Modals ---------- */
+function renderTicketModal(){
+  if (!S.ticketModal) return '';
+  return `<div class="modal-mask" onclick="App.closeTicketModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;">🛟 Gửi Ticket Hỗ Trợ (Raise Ticket)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;">
+        <div><span style="color:#64748b;font-weight:700;display:block;">Mã nhóm:</span>
+          <span style="font-family:monospace;font-weight:800;">#${esc(S.groupId||'—')}</span></div>
+        <div><span style="color:#64748b;font-weight:700;display:block;">Bài lab:</span>
+          <span style="font-weight:800;color:#4f46e5;">${esc(S.PROJECT?S.PROJECT.name:'—')}</span></div>
+      </div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Mức độ ưu tiên:</div>
+        <div style="display:flex;gap:6px;">
+          ${[['low','Thấp'],['medium','Trung bình'],['high','Gấp']].map(([v,l])=>`<button class="pill-btn" style="background:${S.ticketPriority===v?'#4f46e5':'#f1f5f9'};color:${S.ticketPriority===v?'#fff':'#475569'};" onclick="App.set('ticketPriority','${v}')">${l}</button>`).join('')}
+        </div></div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Mô tả vấn đề cần hỗ trợ:</div>
+        <textarea id="ticket-issue" rows="4" placeholder="Mô tả chi tiết khó khăn, thắc mắc hoặc sự cố gặp phải..." style="width:100%;padding:11px 13px;border-radius:12px;border:1px solid #cbd5e1;font-size:12.5px;outline:none;resize:vertical;">${esc(S.ticketIssue)}</textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:10px 16px;" onclick="App.closeTicketModal()">Hủy</button>
+        <button class="pill-btn" style="background:#4f46e5;color:#fff;padding:10px 18px;" onclick="App.submitTicket()">Gửi Ticket</button>
+      </div>
+    </div></div>`;
+}
+
+function renderTicketDetailModal(){
+  if (!S.ticketDetail) return '';
+  const t = S.ticketDetail;
+  const isCoach = S.role === 'coach';
+  return `<div class="modal-mask" onclick="App.closeTicketDetail()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;">🛟 Chi tiết Ticket #${esc(t.id)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;">
+        <div><span style="color:#64748b;font-weight:700;display:block;">Học viên yêu cầu:</span><span style="font-weight:800;">${esc(t.studentName||'—')}</span></div>
+        <div><span style="color:#64748b;font-weight:700;display:block;">Mã nhóm:</span><span style="font-family:monospace;font-weight:800;color:#4f46e5;">#${esc(t.groupId||'—')}</span></div>
+        <div><span style="color:#64748b;font-weight:700;display:block;">Bài lab:</span><span style="font-weight:700;">${esc(t.labName||'—')}</span></div>
+        <div><span style="color:#64748b;font-weight:700;display:block;">Thời gian:</span><span>${esc(t.createdAt)}</span></div>
+      </div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Mô tả vấn đề từ học viên:</div>
+        <div style="background:#0f172a;color:#e2e8f0;border-radius:12px;padding:13px 15px;font-size:12.5px;line-height:1.6;">${esc(t.issue)}</div></div>
+      ${isCoach ? `
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Trạng thái ticket:</div>
+        <div style="display:flex;gap:6px;">
+          <button class="pill-btn" style="background:${S.ticketEditStatus==='pending'?'#f59e0b':'#f1f5f9'};color:${S.ticketEditStatus==='pending'?'#fff':'#475569'};" onclick="App.set('ticketEditStatus','pending')">⏳ Chưa xong</button>
+          <button class="pill-btn" style="background:${S.ticketEditStatus==='resolved'?'#059669':'#f1f5f9'};color:${S.ticketEditStatus==='resolved'?'#fff':'#475569'};" onclick="App.set('ticketEditStatus','resolved')">✓ Đã xong</button>
+        </div></div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Phản hồi & hướng giải quyết của Lab Coach:</div>
+        <textarea id="ticket-response" rows="4" placeholder="Nhập hướng dẫn giải quyết sự cố hoặc phản hồi cho học viên..." style="width:100%;padding:11px 13px;border-radius:12px;border:1px solid #cbd5e1;font-size:12.5px;outline:none;resize:vertical;">${esc(S.ticketEditResponse)}</textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:10px 16px;" onclick="App.closeTicketDetail()">Hủy</button>
+        <button class="pill-btn" style="background:#4f46e5;color:#fff;padding:10px 18px;" onclick="App.saveTicketDetail()">Lưu & cập nhật ticket</button>
+      </div>`
+      : `${t.coachResponse ? `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">💬 Phản hồi từ Lab Coach:</div>
+          <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:12px 14px;font-size:12.5px;color:#3730a3;line-height:1.6;">${esc(t.coachResponse)}</div></div>`
+        : '<div style="margin-top:14px;font-size:12.5px;color:#94a3b8;font-style:italic;">Coach chưa phản hồi ticket này.</div>'}
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:10px 16px;" onclick="App.closeTicketDetail()">Đóng</button>
+      </div>`}
+    </div></div>`;
+}
+
+function renderCoachModal(){
+  if (!S.coachModal) return '';
+  return `<div class="modal-mask" onclick="App.closeCoachModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;">💬 Đánh giá & phê duyệt nhóm (Lab Coach)</div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Trạng thái phê duyệt:</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${[['Approved','✓ Đã phê duyệt','#059669'],['Needs Revision','⚠ Yêu cầu phân công lại','#dc2626'],['Analyzed','Đang xem xét','#a16207']].map(([v,l,c])=>
+            `<button class="pill-btn" style="background:${S.coachStatusEdit===v?c:'#f1f5f9'};color:${S.coachStatusEdit===v?'#fff':'#475569'};" onclick="App.set('coachStatusEdit','${v}')">${l}</button>`).join('')}
+        </div></div>
+      <div style="margin-top:14px;"><div style="font-size:12px;font-weight:800;margin-bottom:5px;">Nhận xét & hướng dẫn cho nhóm:</div>
+        <textarea id="coach-note" rows="4" placeholder="VD: Nhóm nên bổ sung phần test cho Module 4, Bằng hỗ trợ Tâm phần Streamlit..." style="width:100%;padding:11px 13px;border-radius:12px;border:1px solid #cbd5e1;font-size:12.5px;outline:none;resize:vertical;">${esc(S.coachNote)}</textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:10px 16px;" onclick="App.closeCoachModal()">Hủy</button>
+        <button class="pill-btn" style="background:#059669;color:#fff;padding:10px 18px;" onclick="App.saveCoachFeedback()">Lưu nhận xét & phê duyệt</button>
+      </div>
     </div></div>`;
 }
 
 function render(){
   const root = document.getElementById('root');
-  if (S.stage === 'setup') { root.innerHTML = renderSetup(); return; }
+  if (S.stage === 'login') { root.innerHTML = renderLogin(); return; }
+  if (S.stage === 'coach') {
+    root.innerHTML = `<div style="min-height:100vh;">${renderNavbar()}${renderCoach()}${renderTicketDetailModal()}${renderTicketModal()}</div>`;
+    return;
+  }
+  if (S.stage === 'setup') { root.innerHTML = `<div>${renderNavbar()}${renderSetup()}</div>`; return; }
   if (S.stage === 'analyzing') { root.innerHTML = renderAnalyzing(); return; }
   const viewHtml = S.view === 'dashboard' ? renderDashboard()
+    : S.view === 'summary' ? renderSummaryTab()
     : S.view === 'developers' ? renderDevelopers()
     : S.view === 'graph' ? renderGraph()
     : S.view === 'project' ? renderProject()
     : S.view === 'matching' ? renderMatching()
+    : S.view === 'tickets' ? renderTicketsTab()
     : renderClaim();
   root.innerHTML = `<div style="min-height:100vh;display:flex;flex-direction:column;">
+    ${renderNavbar()}
     ${renderHeader()}
-    <div style="flex:1;padding:32px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">${viewHtml}</div>
+    <div style="flex:1;padding:24px 28px 60px;max-width:1360px;width:100%;margin:0 auto;">${viewHtml}</div>
     ${renderExplain()}${renderChat()}
+    ${renderTicketModal()}${renderTicketDetailModal()}${renderCoachModal()}
   </div>`;
   const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
 }

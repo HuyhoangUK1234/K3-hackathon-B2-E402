@@ -102,6 +102,8 @@ class UIProjectAnalysis(BaseModel):
     scale: Literal["Nhỏ", "Trung bình", "Lớn"]
     tech_stack: list[str]
     modules: list[str]
+    summary: str = Field(default="", description="Tóm tắt bài lab 2-4 câu tiếng Việt, chỉ từ tài liệu đã đọc")
+    objectives: list[str] = Field(default=[], description="3-6 mục tiêu chính của bài lab, từ tài liệu, không bịa")
     tasks: list[ProjectTask] = Field(description="4-8 tasks covering the project lifecycle")
     confidence: Literal["low", "medium", "high"]
     clarifying_questions: list[str] = []
@@ -124,8 +126,21 @@ class UIAssignment(BaseModel):
     skills_to_learn: list[str] = []
 
 
+class SkillCoverage(BaseModel):
+    """One row of 'project needs X — who has it?'"""
+    skill: str = Field(description="Required skill name from the task graph")
+    status: Literal["có", "gần có", "thiếu"]
+    covered_by: list[str] = Field(
+        default=[],
+        description="Who covers it, with evidence, e.g. 'Bằng (JavaScript 85 — tương đương)'")
+    note: str = Field(default="", description="1 short sentence: why/how, or who should learn it, Vietnamese")
+
+
 class UIMatchResult(BaseModel):
     assignments: list[UIAssignment]
     unassigned_task_ids: list[str] = []
     warnings: list[str] = []
     workload_notes: str
+    skill_coverage: list[SkillCoverage] = Field(
+        default=[],
+        description="One entry per distinct required skill across all tasks")
