@@ -112,7 +112,11 @@ function skillNames(list){ return (list||[]).map(skillLabel).join(', '); }
 function jsq(s){
   return esc(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 }
-function emptyMember(){ return { name:'', github:'', skillIds:[], wantLearnIds:[], languages:'', frameworks:'', experienceYears:1, readiness:7 }; }
+function emptyMember(){ return { name:'', github:'', skillIds:[], skillLevels:{}, wantLearnIds:[], languages:'', frameworks:'', experienceYears:1, readiness:7 }; }
+/* Nhãn cho mức tự khai — số trần trụi khó tự chấm, chữ dễ hình dung hơn. */
+function levelWord(v){
+  return v >= 80 ? 'Thành thạo' : v >= 60 ? 'Khá vững' : v >= 35 ? 'Làm được việc cơ bản' : 'Mới học';
+}
 function sampleSetup(){
   return { projectName:'', repoUrl:'https://github.com/HuyhoangUK1234/Day04-E402-TeamB2',
     readme:'', deps:'', structure:'', architecture:'Monolith', backlog:'', roadmap:'' };
@@ -173,21 +177,24 @@ function computeFit(task, dev){
    Trước đây cắt cứng 6 trục: ai có 8 kỹ năng thì 2 cái biến mất khỏi hình dù
    bảng bên dưới vẫn liệt kê -> nhìn hai chỗ ra hai con số khác nhau.
    Khung vẽ và chỗ để nhãn cũng phải giãn theo, không thì chữ tràn ra ngoài. */
-const MAX_RADAR_AXES = 10;
+const MAX_RADAR_AXES = 20;   // bằng số trục tối đa một người có thể khai; hơn nữa thì nhãn dính nhau
 function buildRadar(skills){
   const sorted = [...(skills || [])].sort((a, b) => b.level - a.level);
   const axes = sorted.slice(0, MAX_RADAR_AXES);
   const hidden = Math.max(0, sorted.length - axes.length);
   const n = Math.max(3, axes.length);
   // nhiều trục -> hình to hơn để nhãn không chồng nhau
-  const size = n <= 5 ? 260 : n <= 7 ? 290 : 320;
-  const cx = size / 2, cy = size / 2, R = size / 2 - 52;
+  const size = n <= 5 ? 260 : n <= 7 ? 290 : n <= 10 ? 330 : n <= 14 ? 390 : 450;
+  const pad = n <= 10 ? 52 : n <= 14 ? 62 : 72;
+  const cx = size / 2, cy = size / 2, R = size / 2 - pad;
   const angleFor = i => (-90 + i * (360 / n)) * Math.PI / 180;
   const pointsFor = (fn) => axes.map((sk, i) => {
     const ang = angleFor(i); const r = fn(sk) * R;
     return `${(cx + r * Math.cos(ang)).toFixed(1)},${(cy + r * Math.sin(ang)).toFixed(1)}`;
   }).join(' ');
-  return { size, cx, cy, hidden, count: axes.length,
+  const fontSize = n <= 10 ? 10 : n <= 14 ? 9.5 : 9;
+  const maxChars = n <= 10 ? 15 : n <= 14 ? 13 : 11;
+  return { size, cx, cy, hidden, count: axes.length, fontSize,
     valuePoints: pointsFor(sk => sk.level / 100),
     grid100: pointsFor(() => 1), grid75: pointsFor(() => 0.75), grid50: pointsFor(() => 0.5), grid25: pointsFor(() => 0.25),
     axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: cx + R * Math.cos(a), y2: cy + R * Math.sin(a) }; }),
@@ -198,7 +205,7 @@ function buildRadar(skills){
       const full = skillLabel(sk.name);
       return { x: cx + lr * ca, y: cy + lr * Math.sin(a) + 3,
         anchor: ca > 0.3 ? 'start' : ca < -0.3 ? 'end' : 'middle',
-        name: full.length > 15 ? full.slice(0, 14) + '…' : full, full, level: sk.level };
+        name: full.length > maxChars ? full.slice(0, maxChars - 1) + '…' : full, full, level: sk.level };
     }),
   };
 }
@@ -328,9 +335,24 @@ const App = {
     const key = mode === 'want' ? 'wantLearnIds' : 'skillIds';
     const m = S.members[i];
     m[key] = m[key] || [];
+    m.skillLevels = m.skillLevels || {};
     const at = m[key].indexOf(id);
-    if (at >= 0) m[key].splice(at, 1); else m[key].push(id);
+    if (at >= 0) {
+      m[key].splice(at, 1);
+      if (mode !== 'want') delete m.skillLevels[id];
+    } else {
+      m[key].push(id);
+      if (mode !== 'want' && m.skillLevels[id] == null) m.skillLevels[id] = 50;   // mặc định: làm được cơ bản
+    }
     render();
+  },
+  /* Kéo thanh mức: chỉ đổi chữ tại chỗ, không vẽ lại cả trang (kéo sẽ giật). */
+  setSkillLevel(i, id, v){
+    const m = S.members[i];
+    m.skillLevels = m.skillLevels || {};
+    m.skillLevels[id] = Number(v);
+    const el = document.getElementById('lvl-' + i + '-' + id);
+    if (el) el.textContent = v + '/100 · ' + levelWord(Number(v));
   },
 
   /* ---- auth & role ---- */
@@ -749,13 +771,37 @@ function skillTagField(i, mode, labelText){
   const m = S.members[i];
   const ids = (mode === 'want' ? m.wantLearnIds : m.skillIds) || [];
   const color = mode === 'want' ? {bg:'#fef3c7', fg:'#b45309', bd:'#fde68a'} : {bg:'#dbeafe', fg:'#1d4ed8', bd:'#bfdbfe'};
-  const chips = ids.map(id => `<span style="display:inline-flex;align-items:center;gap:5px;background:${color.bg};color:${color.fg};border:1px solid ${color.bd};font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:9px;">
-      ${esc(skillLabel(id))}
-      <button title="Bỏ chọn" onclick="App.toggleMemberSkill(${i},'${mode}','${jsq(id)}')" style="border:none;background:transparent;color:${color.fg};cursor:pointer;font-size:12px;line-height:1;padding:0;">✕</button></span>`).join('');
-  return `<div style="font-size:11.5px;font-weight:700;margin-bottom:5px;color:oklch(0.45 0.01 85);">${labelText}</div>
-    <div style="border:1px solid oklch(0.92 0.006 85);border-radius:8px;padding:7px;min-height:38px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
-      ${chips || '<span style="font-size:11.5px;color:#94a3b8;">Chưa chọn</span>'}
-      <button onclick="App.openSkillPicker(${i},'${mode}')" style="margin-left:auto;border:1px dashed #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;">+ Chọn</button>
+  const addBtn = `<button onclick="App.openSkillPicker(${i},'${mode}')" style="border:1px dashed #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;">+ Chọn</button>`;
+
+  if (mode === 'want') {                       // muốn học thì chưa có mức để khai
+    const chips = ids.map(id => `<span style="display:inline-flex;align-items:center;gap:5px;background:${color.bg};color:${color.fg};border:1px solid ${color.bd};font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:9px;">
+        ${esc(skillLabel(id))}
+        <button title="Bỏ chọn" onclick="App.toggleMemberSkill(${i},'want','${jsq(id)}')" style="border:none;background:transparent;color:${color.fg};cursor:pointer;font-size:12px;line-height:1;padding:0;">✕</button></span>`).join('');
+    return `<div style="font-size:11.5px;font-weight:700;margin-bottom:5px;color:oklch(0.45 0.01 85);">${labelText}</div>
+      <div style="border:1px solid oklch(0.92 0.006 85);border-radius:8px;padding:7px;min-height:38px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+        ${chips || '<span style="font-size:11.5px;color:#94a3b8;">Chưa chọn</span>'}
+        <span style="margin-left:auto;">${addBtn}</span>
+      </div>`;
+  }
+
+  // Kỹ năng đang có: mỗi cái một thanh kéo mức tự khai, không để AI phải đoán.
+  const rows = ids.map(id => {
+    const lv = (m.skillLevels || {})[id] ?? 50;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;">
+      <div style="flex:0 0 120px;min-width:0;font-size:11.5px;font-weight:700;color:#1d4ed8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(skillLabel(id))}">${esc(skillLabel(id))}</div>
+      <input type="range" min="10" max="100" step="5" value="${lv}" oninput="App.setSkillLevel(${i},'${jsq(id)}',this.value)"
+        style="flex:1;min-width:80px;accent-color:#2563eb;" />
+      <div id="lvl-${i}-${esc(id)}" style="flex:0 0 118px;font-size:10.5px;font-weight:700;color:#64748b;text-align:right;">${lv}/100 · ${levelWord(lv)}</div>
+      <button title="Bỏ kỹ năng này" onclick="App.toggleMemberSkill(${i},'have','${jsq(id)}')" style="border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;padding:0 2px;">✕</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+      <span style="font-size:11.5px;font-weight:700;color:oklch(0.45 0.01 85);">${labelText}</span>
+      <span style="margin-left:auto;">${addBtn}</span>
+    </div>
+    <div style="border:1px solid oklch(0.92 0.006 85);border-radius:8px;padding:${ids.length?'4px 9px':'9px'};">
+      ${rows || '<span style="font-size:11.5px;color:#94a3b8;">Chưa chọn — bấm “+ Chọn”. Bỏ trống cũng được, AI vẫn đọc GitHub.</span>'}
+      ${ids.length ? '<div style="font-size:10.5px;color:#94a3b8;padding:2px 0 5px;">Mức tự khai không có bằng chứng GitHub bị giới hạn 65/100.</div>' : ''}
     </div>`;
 }
 
@@ -1194,7 +1240,7 @@ function renderDevelopers(){
             ${radar.axisLines.map(ax => `<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.9 0.006 85)" stroke-width="1"></line>`).join('')}
             <polygon points="${radar.valuePoints}" fill="oklch(0.56 0.15 262 / 0.22)" stroke="oklch(0.56 0.15 262)" stroke-width="2"></polygon>
             ${radar.dots.map(dt => `<circle cx="${dt.x.toFixed(1)}" cy="${dt.y.toFixed(1)}" r="3" fill="oklch(0.56 0.15 262)"><title>${esc(dt.name)}: ${dt.level}/100</title></circle>`).join('')}
-            ${radar.labels.map(lb => `<text x="${lb.x.toFixed(1)}" y="${lb.y.toFixed(1)}" text-anchor="${lb.anchor}" font-size="10" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}<title>${esc(lb.full)}: ${lb.level}/100</title></text>`).join('')}
+            ${radar.labels.map(lb => `<text x="${lb.x.toFixed(1)}" y="${lb.y.toFixed(1)}" text-anchor="${lb.anchor}" font-size="${radar.fontSize}" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}<title>${esc(lb.full)}: ${lb.level}/100</title></text>`).join('')}
           </svg>
           <div style="font-size:11px;color:oklch(0.55 0.01 85);text-align:center;margin-top:-4px;">
             ${radar.count} trục kỹ năng${radar.hidden ? ` · còn ${radar.hidden} kỹ năng nữa xem ở bảng bên phải` : ''}</div>

@@ -227,6 +227,13 @@ def _cap_workload(devs: list[dict], tasks: list[dict], assignments: dict,
 
 
 FIT_OK_LEVEL = 40       # dưới mức này coi như chưa làm được việc thật trên trục đó
+SELF_REPORT_CAP = 65    # tự khai không bằng chứng thì không vượt được mức này
+
+
+def _is_self_reported(evidence: str) -> bool:
+    """Bằng chứng chỉ là lời tự khai, không trỏ về repo/commit nào."""
+    ev = (evidence or "").lower()
+    return ("self-report" in ev or "self report" in ev or "tự khai" in ev) and "[" not in ev
 
 
 def _calibrate_fit(devs: list[dict], tasks: list[dict], assignments: dict,
@@ -313,11 +320,34 @@ def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
     # Guardrail: người dùng tự khai gì thì phải còn nguyên trong hồ sơ. Model hay
     # bỏ rơi kỹ năng không có trục tương ứng (VD 'Java'). Ghi vào là trung thực —
     # đây là lời khai của chính họ, và evidence nói rõ chỉ là tự khai.
+    # Trần tự khai: prompt đã yêu cầu nhưng model vẫn echo nguyên mức người dùng kéo
+    # (khai 90 -> trả 90). Chặn bằng code cho chắc: bằng chứng chỉ là lời tự khai thì
+    # không thể ngang người có commit chứng minh.
+    for sid, (lv, ev) in list(merged.items()):
+        if lv > SELF_REPORT_CAP and _is_self_reported(ev):
+            merged[sid] = (SELF_REPORT_CAP,
+                           f"{ev} — tự khai {lv}/100, hệ thống giới hạn {SELF_REPORT_CAP} "
+                           f"vì chưa có dữ liệu GitHub chứng minh")
+    prof.skills = [UISkill(name=sid, level=lv, evidence=ev)
+                   for sid, (lv, ev) in merged.items()]
+
+    levels = {}
+    for name_, lv in (self_reported.get("declared_skill_levels") or {}).items():
+        sid = canon(name_) or str(name_).strip()
+        try:
+            levels[sid] = max(0, min(100, int(lv)))
+        except (TypeError, ValueError):
+            continue
     for raw in (self_reported.get("declared_skill_axes") or []):
         sid = canon(raw) or str(raw).strip()
         if sid and sid not in merged:
-            merged[sid] = (45, "self-reported (người dùng tự khai, chưa có dữ liệu GitHub)")
-            prof.skills.append(UISkill(name=sid, level=45, evidence=merged[sid][1]))
+            claimed = levels.get(sid, 45)
+            lv = min(claimed, SELF_REPORT_CAP)
+            note = (f"self-reported (tự khai {claimed}/100"
+                    + (f", giới hạn {SELF_REPORT_CAP} vì chưa có dữ liệu GitHub" if claimed > lv else "")
+                    + ")")
+            merged[sid] = (lv, note)
+            prof.skills.append(UISkill(name=sid, level=lv, evidence=note))
     return prof
 
 
@@ -354,10 +384,21 @@ def analyze_prepare(setup: dict, members: list[dict]) -> dict:
         # vẫn nhận chữ tự do nên vẫn canon lại phòng khi họ gõ 'NextJS'.
         declared = canon_list(m.get("skillIds") or [])
         wants = canon_list(m.get("wantLearnIds") or [])
+        # Mức người dùng tự kéo trên thanh trượt; key cũng phải quy về trục chuẩn.
+        raw_levels = m.get("skillLevels") or {}
+        declared_levels = {}
+        for name_, lv in raw_levels.items():
+            sid = canon(name_) or str(name_).strip()
+            try:
+                declared_levels[sid] = max(0, min(100, int(lv)))
+            except (TypeError, ValueError):
+                continue
         profile = profile_developer(gh, {
             "name": m.get("name", ""),
             "declared_skill_axes": declared,
             "declared_skill_labels": [label(s) for s in declared],
+            "declared_skill_levels": {label(s): declared_levels[s]
+                                      for s in declared if s in declared_levels},
             "wants_to_learn_axes": wants,
             "wants_to_learn_labels": [label(s) for s in wants],
             "other_tech_free_text": ", ".join(

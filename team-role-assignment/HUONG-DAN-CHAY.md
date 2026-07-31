@@ -90,6 +90,7 @@ Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
 2. **Bước 1**: dán link repo bài lab (đã điền sẵn repo mẫu Day04 của Team B2). Chỉ cần repo — AI tự đọc README và các file cần thiết.
 3. **Bước 2**: điền các thành viên — chỉ cần **tên + GitHub username** là đủ (đã điền sẵn 4 người Team B2 để thử, có thể xoá/sửa).
    - Muốn khai thêm năng lực thì bấm **+ Chọn** ở ô *Kỹ năng đang có* / *Kỹ năng muốn học* rồi tick trong danh mục chuẩn của khoá (24 kỹ năng, lấy từ `seed/skills.json`). **Không gõ tay** — chọn tag để tránh cảnh "NextJS" và "Next.js" bị coi là hai kỹ năng khác nhau.
+   - Mỗi kỹ năng đã chọn có **thanh kéo mức thành thạo** (Mới học → Làm được cơ bản → Khá vững → Thành thạo). Khai bao nhiêu cũng được nhưng mức chỉ dựa trên lời tự khai bị **giới hạn 65/100** — muốn cao hơn thì phải có commit/repo chứng minh.
    - Công nghệ ngoài danh mục (Unity, Rust…) thì điền ở ô **Công nghệ khác**.
 4. Bấm **"Đưa cho AI phân tích"** → chờ 1-2 phút (AI đọc GitHub thật + gọi OpenAI thật).
 5. **Bước 3 — trước khi AI phân công**: app dừng lại, hiện **radar năng lực nhóm so với bài lab** và danh sách **kỹ năng cả nhóm còn hổng**. Với mỗi kỹ năng, chọn ai sẽ nhận học (người từng khai "muốn học" được gợi ý sẵn) rồi bấm **Phân công với lựa chọn này** — AI sẽ ưu tiên giao việc đó cho đúng người ấy. Không muốn chọn thì bấm **Bỏ qua, để AI tự quyết**.

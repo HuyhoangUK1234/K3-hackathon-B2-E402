@@ -443,6 +443,24 @@ def run_g03():
     record("G03", ok, f"điểm sau hiệu chỉnh={s}, rủi ro={at_risk}, ghi chú={len(notes)}")
 
 
+def run_d07():
+    """Người dùng tự kéo thanh mức 95/100 — không có GitHub thì phải bị chặn ở 65."""
+    gh = GitHubData(username="", error="Không nhập GitHub username")
+    p = profile_developer(gh, {
+        "name": "Tự khai", "declared_skill_axes": ["database", "devops-deploy"],
+        "declared_skill_labels": ["Cơ sở dữ liệu", "Triển khai"],
+        "declared_skill_levels": {"Cơ sở dữ liệu": 95, "Triển khai": 30},
+        "wants_to_learn_axes": [], "wants_to_learn_labels": [],
+        "other_tech_free_text": "", "readiness_1_to_10": 9, "years_experience": 1,
+    })
+    lv = {s.name: s.level for s in p.skills}
+    over = [(s.name, s.level) for s in p.skills if s.level > 65]
+    ok = (not over and lv.get("database") == 65 and lv.get("devops-deploy") == 30
+          and all(s.evidence.strip() for s in p.skills))
+    record("D07", ok, f"khai 95 -> {lv.get('database')}, khai 30 -> {lv.get('devops-deploy')}, "
+                      f"vượt trần={over}", fabricated=bool(over))
+
+
 def run_n01():
     """Lỗi thật: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau -> báo thiếu oan."""
     variants = {
@@ -473,7 +491,7 @@ RUNNERS = [run_p01, run_p02, run_p03, run_p04, run_p05, run_p06,
            run_d01, run_d02, run_d03, run_d04, run_d05, run_d06,
            run_m01, run_m02, run_m03, run_m04, run_m05, run_m06,
            run_c01, run_c02, run_c03, run_c04,
-           run_a01, run_g01, run_g02, run_g03, run_n01, run_n02]
+           run_a01, run_g01, run_g02, run_g03, run_d07, run_n01, run_n02]
 
 
 def write_report():

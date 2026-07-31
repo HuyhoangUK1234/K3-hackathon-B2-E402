@@ -91,7 +91,7 @@ class UIDevProfile(BaseModel):
                          "Mobile Developer", "AI Engineer", "Data Engineer",
                          "DevOps Engineer", "QA Engineer", "Product/Docs"]
     skills: list[UISkill] = Field(
-        description="4-8 skills, each with evidence. Chỉ thêm trục thật sự có bằng chứng — "
+        description="4-12 skills, each with evidence. Chỉ thêm trục thật sự có bằng chứng — "
                     "thiếu bằng chứng thì để ít trục còn hơn bịa cho đủ")
     strengths: list[str] = Field(description="2-4 concrete strengths, Vietnamese")
     missing: list[str] = Field(description="1-3 skills missing vs their role, Vietnamese ok")

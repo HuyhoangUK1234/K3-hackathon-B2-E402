@@ -9,7 +9,7 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 
 ## 2. Tổng số câu trong bộ thử nghiệm
 
-**28** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
+**29** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
 
 ## 3. Bốn kiểu tình huống khó của sản phẩm
 
@@ -23,7 +23,7 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 
 ### Đối chiếu số câu theo kiểu (mỗi kiểu ≥2 câu)
 
-- ✅ Thông tin KHÔNG có trong tài liệu: **8 câu** (P03, P04, P05, D01, D02, D03, C02, N02)
+- ✅ Thông tin KHÔNG có trong tài liệu: **9 câu** (P03, P04, P05, D01, D02, D03, D07, C02, N02)
 - ✅ Câu mơ hồ, thiếu ngữ cảnh: **4 câu** (P02, P06, D04, D05)
 - ✅ Đòi thứ không được phép: **2 câu** (C01, C04)
 - ✅ Sai gây hậu quả thật: **11 câu** (D06, M02, M03, M04, M05, M06, C03, G01, G02, G03, N01)
@@ -31,7 +31,7 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 
 ## 4. Số câu bắt nguồn từ quan sát thực tế
 
-**15 câu** (P03, P04, D03, D04, D06, M03, M04, M05, M06, A01, G01, G02, G03, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
+**16 câu** (P03, P04, D03, D04, D06, D07, M03, M04, M05, M06, A01, G01, G02, G03, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
 - Lab Coach điền kỹ năng "NextJS", hệ thống ghi "Next.js" → bảng kỹ năng báo thiếu oan (lỗi thật, đã sửa bằng danh mục chuẩn + tag picker) → case N01, M06.
 - Repo của HuyhoangUK1234 toàn fork → hồ sơ rỗng (bug thật, đã sửa) → case D03.
 - Gõ sai GitHub username → 404, chỉ còn tự khai → case D04.
@@ -50,7 +50,8 @@ Lịch sử đầy đủ: `eval/run-history.md`; bảng chi tiết từng câu c
 | 2 — ngay sau khi ép kỹ năng về danh mục chuẩn | 31/07/2026 | 20/26 (76.9%) | **2** | **CHƯA ĐẠT** |
 | 3 — sau khi siết prompt + thêm guardrail giữ kỹ năng tự khai | 31/07/2026 | 23/26 (88.5%) | 0 | ĐẠT |
 | 4 — thêm guardrail trần 50% khối lượng (case G02) | 31/07/2026 | 25/27 (92.6%) | 0 | ĐẠT |
-| 5 — thêm hiệu chỉnh Fit theo bằng chứng (case G03) | 31/07/2026 | **26/28 (92.9%)** | 0 | ĐẠT |
+| 5 — thêm hiệu chỉnh Fit theo bằng chứng (case G03) | 31/07/2026 | 26/28 (92.9%) | 0 | ĐẠT |
+| 6 — thêm trần mức tự khai 65 (case D07) | 31/07/2026 | **27/29 (93.1%)** | 0 | ĐẠT |
 
 **Lượt 2 là lượt đáng giá nhất để kể khi demo:** việc thống nhất tên kỹ năng về 24 trục của khoá đã sửa được lỗi "NextJS ≠ Next.js", nhưng lại đẻ ra lỗi mới — trục quá thô khiến model suy diễn bắc cầu ("có repo Python" → gán thêm `backend-api`, `data-handling`; repo toàn JavaScript vẫn gán `python`) và làm rơi kỹ năng ngoài danh mục (khai Java thì Java biến mất khỏi hồ sơ). Đó là 2 lần bịa, tức vi phạm đúng điều nhóm cam kết không cho phép sai, nên lượt đó **trượt chuẩn** dù vẫn 76.9%.
 
