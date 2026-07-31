@@ -1,6 +1,7 @@
 """FastAPI server: serves the AI Lab Team UI and the analysis/chat/ticket endpoints."""
 import json
 import os
+import re
 import time
 import traceback
 from datetime import datetime
@@ -306,6 +307,113 @@ def create_ticket(req: TicketCreate):
 def list_coaches():
     """Tài khoản Lab Coach dùng để đăng nhập (demo, không mật khẩu)."""
     return _coaches()
+
+
+# ---------------- seed/students.json — học viên tự khai blocker/định hướng ----------------
+
+class LabEntryCreate(BaseModel):
+    """Một lượt tự khai. Định danh bằng MSSV hoặc GitHub login, ít nhất một cái."""
+    mssv: str = ""
+    github: str = ""
+    name: str = ""
+    blockers: list[str] = []
+    intentions: list[str] = []
+
+
+def _students_file() -> Path:
+    return SEED / "students.json"
+
+
+def _load_students() -> list:
+    f = _students_file()
+    if not f.exists():
+        return []
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _save_students(items: list):
+    with _io_lock:
+        _students_file().write_text(json.dumps(items, ensure_ascii=False, indent=4),
+                                    encoding="utf-8")
+
+
+def _gh_login(url: str) -> str:
+    """https://github.com/VanTienDL -> vantiendl (so khớp không phân biệt hoa thường)."""
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return ""
+    tail = u.split("github.com", 1)[1].lstrip("/:") if "github.com" in u else u
+    return tail.split("/")[0].lower()
+
+
+def _next_lab_name(labs: list) -> str:
+    """lab1, lab2 đã có -> lab3. Tên lạ thì bỏ qua khi tính số lớn nhất."""
+    biggest = 0
+    for e in labs or []:
+        m = re.match(r"^lab\s*(\d+)$", str(e.get("name", "")).strip(), re.I)
+        if m:
+            biggest = max(biggest, int(m.group(1)))
+    return f"lab{biggest + 1}"
+
+
+@app.get("/api/students")
+def list_students_seed():
+    """Danh sách học viên trong seed — UI dùng để biết ai đã có hồ sơ."""
+    return [{"id": s.get("id"), "name": s.get("name", ""), "mssv": str(s.get("MSSV", "")),
+             "github": s.get("github", ""), "login": _gh_login(s.get("github", "")),
+             "labs": [e.get("name") for e in (s.get("labs") or [])]}
+            for s in _load_students()]
+
+
+@app.post("/api/students/labs")
+def add_student_lab(req: LabEntryCreate):
+    """Thêm một lab mới (tên tăng dần) kèm blocker + định hướng học viên tự khai.
+
+    repo_url để trống, report/group_report để rỗng — sẽ điền sau khi có bài nộp.
+    Không tìm thấy học viên thì tạo hồ sơ mới với id kế tiếp.
+    """
+    blockers = [b.strip() for b in req.blockers if b and b.strip()]
+    intentions = [i.strip() for i in req.intentions if i and i.strip()]
+    if not blockers and not intentions:
+        return JSONResponse(status_code=400,
+                            content={"error": "Cần ít nhất 1 khó khăn hoặc 1 định hướng."})
+
+    mssv = str(req.mssv or "").strip()
+    login = _gh_login(req.github)
+    if not mssv and not login:
+        return JSONResponse(status_code=400,
+                            content={"error": "Cần MSSV hoặc GitHub username để biết ghi cho ai."})
+
+    students = _load_students()
+    target = next((s for s in students
+                   if (mssv and str(s.get("MSSV", "")).strip() == mssv)
+                   or (login and _gh_login(s.get("github", "")) == login)), None)
+    created = False
+    if target is None:
+        next_id = max([int(s.get("id", 0) or 0) for s in students], default=0) + 1
+        target = {"id": next_id, "name": req.name or login or mssv, "MSSV": mssv,
+                  "github": f"https://github.com/{req.github.strip()}" if login else "",
+                  "labs": []}
+        students.append(target)
+        created = True
+
+    entry = {
+        "name": _next_lab_name(target.get("labs")),
+        "repo_url": "",
+        "report": [],
+        "group_report": [],
+        "blockers": blockers,
+        "intentions": intentions,
+    }
+    target.setdefault("labs", []).append(entry)
+    _save_students(students)
+    return {"ok": True, "created": created, "student": {
+        "id": target["id"], "name": target["name"], "mssv": target.get("MSSV", "")},
+        "lab": entry}
 
 
 @app.patch("/api/tickets/{ticket_id}")

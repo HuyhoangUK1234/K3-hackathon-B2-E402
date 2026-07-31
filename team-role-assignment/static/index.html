@@ -85,6 +85,9 @@ const S = {
   matching: false,
   showDetail: false,             // màn kết quả: mặc định gọn, bật mới hiện chi tiết
   view: 'dashboard', selectedDevId: null, currentUserId: null,
+  // Modal học viên tự khai khó khăn / định hướng -> seed/students.json
+  selfModal: false, selfBlockers: [''], selfIntentions: [''],
+  selfMssv: '', selfBusy: false, selfMsg: '', seedStudents: [],
   devSearch: '', devSkillFilter: 'all', difficultyFilter: 'all',
   sortCol: 'difficulty', sortDir: 'desc',
   explainTaskId: null, explainDevId: null,
@@ -662,6 +665,61 @@ const App = {
   setDifficultyFilter(v){ S.difficultyFilter = v; render(); },
   setSort(col){ if (S.sortCol === col) S.sortDir = S.sortDir === 'asc' ? 'desc' : 'asc'; else { S.sortCol = col; S.sortDir = 'desc'; } render(); },
   selectUser(v){ S.currentUserId = v; render(); },
+
+  /* ---- học viên tự khai khó khăn / định hướng -> seed/students.json ---- */
+  async openSelfReport(){
+    S.selfModal = true; S.selfMsg = ''; S.selfBusy = false;
+    S.selfBlockers = ['']; S.selfIntentions = [''];
+    try { S.seedStudents = await fetch('/api/students').then(r=>r.json()); }
+    catch(e) { S.seedStudents = []; }
+    // Ghép người đang chọn ở thanh "Tôi là ..." với hồ sơ trong seed theo GitHub login
+    const me = S.DEVS.find(d => d.id === S.currentUserId);
+    const login = (me && me.github || '').trim().toLowerCase();
+    const hit = S.seedStudents.find(s => s.login && s.login === login);
+    S.selfMssv = hit ? hit.mssv : '';
+    render();
+  },
+  closeSelfReport(){ S.selfModal = false; render(); },
+  // Gom giá trị đang gõ trong DOM trước khi render lại, nếu không sẽ mất chữ
+  syncSelfInputs(){
+    S.selfBlockers = S.selfBlockers.map((v,i) => {
+      const el = document.getElementById('self-b-' + i); return el ? el.value : v; });
+    S.selfIntentions = S.selfIntentions.map((v,i) => {
+      const el = document.getElementById('self-i-' + i); return el ? el.value : v; });
+  },
+  addSelfItem(kind){ App.syncSelfInputs();
+    (kind === 'b' ? S.selfBlockers : S.selfIntentions).push(''); render(); },
+  removeSelfItem(kind, i){ App.syncSelfInputs();
+    const arr = kind === 'b' ? S.selfBlockers : S.selfIntentions;
+    arr.splice(i, 1); if (!arr.length) arr.push(''); render(); },
+  setSelfMssv(v){ S.selfMssv = v; },
+
+  async saveSelfReport(){
+    App.syncSelfInputs();
+    const blockers = S.selfBlockers.map(s=>s.trim()).filter(Boolean);
+    const intentions = S.selfIntentions.map(s=>s.trim()).filter(Boolean);
+    if (!blockers.length && !intentions.length) {
+      S.selfMsg = 'Cần ít nhất 1 khó khăn hoặc 1 định hướng.'; render(); return; }
+    const me = S.DEVS.find(d => d.id === S.currentUserId);
+    const mssv = (document.getElementById('self-mssv')||{}).value ?? S.selfMssv;
+    if (!mssv.trim() && !(me && me.github)) {
+      S.selfMsg = 'Cần MSSV hoặc GitHub username để biết ghi cho ai.'; render(); return; }
+    S.selfBusy = true; S.selfMsg = ''; render();
+    try {
+      const r = await fetch('/api/students/labs', { method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ mssv: mssv.trim(), github: me ? me.github : '',
+          name: me ? me.name : '', blockers, intentions }) });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      S.selfBusy = false;
+      S.selfMsg = `✓ Đã lưu vào ${d.lab.name} của ${d.student.name}`
+        + (d.created ? ' (tạo hồ sơ mới)' : '') + '.';
+      S.selfBlockers = ['']; S.selfIntentions = [''];
+      S.seedStudents = await fetch('/api/students').then(r=>r.json());
+      render();
+    } catch(e) { S.selfBusy = false; S.selfMsg = 'Lỗi lưu: ' + e.message; render(); }
+  },
   resetAssignments(){ S.assignments = { ...S.DEFAULT_ASSIGNMENTS }; App.persistAssignments(); render(); },
   claimTask(id){ S.assignments[id] = S.currentUserId; App.persistAssignments(); render(); },
   releaseTask(id){ S.assignments[id] = null; App.persistAssignments(); render(); },
@@ -1898,6 +1956,7 @@ function renderDetailHeader(){
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       ${S.role==='coach' ? `<button class="pill-btn" style="background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;padding:10px 16px;" onclick="App.openCoachModal()">💬 Đánh giá từ Coach</button>` : ''}
+      ${S.role!=='coach' ? `<button class="pill-btn" style="background:#ecfdf5;border:1px solid #6ee7b7;color:#047857;padding:10px 16px;" onclick="App.openSelfReport()">📝 Tự khai khó khăn &amp; định hướng</button>` : ''}
       <button class="pill-btn" style="background:#4f46e5;color:#fff;padding:10px 16px;" onclick="App.openTicketModal()">🛟 Raise Ticket</button>
       <button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;padding:10px 14px;" onclick="App.set('view','tickets')">Tickets ${pendingCount?`<span style="background:#f43f5e;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:2px;">${pendingCount}</span>`:''}</button>
     </div></div>`;
@@ -2174,6 +2233,73 @@ function renderCoach(){
 }
 
 /* ---------- Modals ---------- */
+function renderSelfReportModal(){
+  if (!S.selfModal) return '';
+  const me = S.DEVS.find(d => d.id === S.currentUserId);
+  const login = (me && me.github || '').trim();
+  const hit = S.seedStudents.find(s => s.login && s.login === login.toLowerCase());
+  const nextLab = hit ? `lab${(hit.labs||[]).reduce((m,n)=>{
+      const k = /^lab\s*(\d+)$/i.exec(String(n||'')); return k ? Math.max(m, +k[1]) : m; }, 0) + 1}`
+    : 'lab1';
+
+  // Một khối = một mảng trong JSON. Mỗi dòng con = một phần tử của mảng đó.
+  const block = (kind, title, hint, color, items) => {
+    const rows = items.map((v, i) => `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+      <div style="flex:0 0 auto;width:22px;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#94a3b8;">${i+1}</div>
+      <textarea id="self-${kind}-${i}" rows="2" placeholder="${esc(hint)}"
+        style="flex:1;padding:9px 11px;border-radius:10px;border:1px solid #cbd5e1;font-size:12.5px;outline:none;resize:vertical;font-family:inherit;">${esc(v)}</textarea>
+      <button title="Xoá dòng này" onclick="App.removeSelfItem('${kind}',${i})"
+        style="flex:0 0 auto;width:30px;height:34px;border-radius:9px;border:1px solid #fecaca;background:#fff;color:#b91c1c;cursor:pointer;font-size:14px;">✕</button>
+    </div>`).join('');
+    return `<div style="border:1px solid ${color.border};background:${color.bg};border-radius:14px;padding:14px;margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:800;color:${color.fg};">${title}
+          <span style="font-weight:600;color:#64748b;font-size:11.5px;"> · ${items.length} mục</span></div>
+        <button onclick="App.addSelfItem('${kind}')" class="pill-btn"
+          style="background:#fff;border:1px solid ${color.border};color:${color.fg};padding:6px 12px;font-size:11.5px;">＋ Thêm mục</button>
+      </div>
+      ${rows}</div>`;
+  };
+
+  const msg = S.selfMsg ? `<div style="margin-top:12px;border-radius:10px;padding:10px 13px;font-size:12.5px;
+      background:${S.selfMsg.startsWith('✓')?'#d1fae5':'#fee2e2'};color:${S.selfMsg.startsWith('✓')?'#065f46':'#b91c1c'};
+      border:1px solid ${S.selfMsg.startsWith('✓')?'#6ee7b7':'#fecaca'};">${esc(S.selfMsg)}</div>` : '';
+
+  return `<div class="modal-mask" onclick="App.closeSelfReport()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;">📝 Tự khai khó khăn &amp; định hướng</div>
+      <div style="font-size:12.5px;color:#64748b;margin-top:5px;line-height:1.5;">
+        Ghi vào <strong>seed/students.json</strong> thành một bài lab mới. Mỗi dòng là một mục riêng —
+        đừng gộp nhiều ý vào một dòng, hệ thống đối chiếu từng mục với kỹ năng.</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;">
+        <div><span style="color:#64748b;font-weight:700;display:block;">Người khai:</span>
+          <span style="font-weight:800;">${esc(me ? me.name : '—')}</span>
+          ${login?`<span style="font-family:monospace;color:#4f46e5;"> @${esc(login)}</span>`:''}</div>
+        <div><span style="color:#64748b;font-weight:700;display:block;">Sẽ lưu vào:</span>
+          <span style="font-weight:800;">${hit ? esc(hit.name) : 'hồ sơ mới'}</span>
+          <span style="font-family:monospace;color:#059669;"> · ${esc(nextLab)}</span></div>
+      </div>
+
+      ${hit ? '' : `<div style="margin-top:12px;">
+        <div style="font-size:12px;font-weight:800;margin-bottom:5px;">MSSV <span style="font-weight:600;color:#64748b;">(chưa có hồ sơ khớp GitHub — điền để ghép đúng người)</span></div>
+        <input id="self-mssv" type="text" value="${esc(S.selfMssv)}" placeholder="VD: 2A202601433"
+          oninput="App.setSelfMssv(this.value)"
+          style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;font-size:12.5px;outline:none;" /></div>`}
+
+      ${block('b', '🚧 Khó khăn gặp phải', 'VD: Chưa hiểu cách quản lý API key', {bg:'#fff7ed',border:'#fed7aa',fg:'#c2410c'}, S.selfBlockers)}
+      ${block('i', '🎯 Định hướng lab tiếp theo', 'VD: Muốn học function calling của OpenAI', {bg:'#f0fdfa',border:'#99f6e4',fg:'#0f766e'}, S.selfIntentions)}
+      ${msg}
+
+      <div style="font-size:11.5px;color:#94a3b8;margin-top:12px;">repo_url để trống, report/group_report để rỗng — điền sau khi có bài nộp.</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="pill-btn" style="background:#f1f5f9;color:#475569;padding:10px 16px;" onclick="App.closeSelfReport()">Đóng</button>
+        <button class="pill-btn" style="background:${S.selfBusy?'#94a3b8':'#059669'};color:#fff;padding:10px 18px;"
+          onclick="App.saveSelfReport()" ${S.selfBusy?'disabled':''}>${S.selfBusy?'Đang lưu…':'Lưu vào students.json'}</button>
+      </div>
+    </div></div>`;
+}
+
 function renderTicketModal(){
   if (!S.ticketModal) return '';
   return `<div class="modal-mask" onclick="App.closeTicketModal()">
@@ -2297,7 +2423,7 @@ function render(){
         <button class="pill-btn" style="background:#fff;color:#b91c1c;border:1px solid #fecaca;" onclick="App.set('saveError','')">Đóng</button></div>` : ''}
       ${viewHtml}</div>
     ${renderExplain()}${renderChat()}
-    ${renderTicketModal()}${renderTicketDetailModal()}${renderCoachModal()}
+    ${renderTicketModal()}${renderTicketDetailModal()}${renderCoachModal()}${renderSelfReportModal()}
   </div>`);
   applyHover();
   const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;

@@ -228,6 +228,20 @@ def _cap_workload(devs: list[dict], tasks: list[dict], assignments: dict,
 
 FIT_OK_LEVEL = 40       # dưới mức này coi như chưa làm được việc thật trên trục đó
 SELF_REPORT_CAP = 65    # tự khai không bằng chứng thì không vượt được mức này
+LEVEL_STEP = 5          # làm tròn mức thành thạo về bội của 5
+
+
+def _quantize(level: int) -> int:
+    """72 và 74 là cùng một mức năng lực, chỉ khác nhiễu của model.
+
+    Không làm tròn thì radar mỗi lượt lệch vài độ, nhìn như hai người khác nhau.
+    Về bội của 5 thì nhiễu nhỏ biến mất, chênh lệch thật vẫn còn.
+    """
+    try:
+        lv = int(level)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, round(lv / LEVEL_STEP) * LEVEL_STEP))
 
 
 def _is_self_reported(evidence: str) -> bool:
@@ -348,6 +362,13 @@ def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
                     + ")")
             merged[sid] = (lv, note)
             prof.skills.append(UISkill(name=sid, level=lv, evidence=note))
+
+    # Chốt lần cuối: làm tròn mức + sắp xếp cố định (mạnh trước, cùng mức thì theo tên).
+    # Không sắp thì thứ tự trục radar đổi theo thứ tự model trả về, nhìn như đổi hồ sơ.
+    prof.skills = sorted(
+        (UISkill(name=sid, level=_quantize(lv), evidence=ev)
+         for sid, (lv, ev) in merged.items()),
+        key=lambda s: (-s.level, s.name))
     return prof
 
 
@@ -360,10 +381,13 @@ def analyze_project_ui(proj_input: str) -> UIProjectAnalysis:
 def match_ui(match_payload: dict) -> UIMatchResult:
     """Flow 3 LLM step — same prompt the app uses; also called by eval."""
     # skill_coverage bắt 1 dòng mỗi skill nên output phình theo số task -> chặn trần.
+    # sort_keys: dict Python giữ thứ tự chèn, đổi thứ tự key là đổi prompt là đổi
+    # kết quả dù dữ liệu y hệt. Serialize có sắp xếp thì cùng dữ liệu = cùng chuỗi.
     return call_json(MODEL_SMART, UI_MATCH_SYSTEM,
-                     "Dữ liệu team và task:\n" + json.dumps(match_payload, ensure_ascii=False)
+                     "Dữ liệu team và task:\n"
+                     + json.dumps(match_payload, ensure_ascii=False, sort_keys=True)
                      + "\n\nPhân công và trả về UIMatchResult.", UIMatchResult,
-                     temperature=0.3, max_tokens=2000)
+                     max_tokens=2000)
 
 
 def analyze_prepare(setup: dict, members: list[dict]) -> dict:
@@ -454,31 +478,39 @@ def analyze_prepare(setup: dict, members: list[dict]) -> dict:
             if ctx["readme"]:
                 readme = ctx["readme"]
                 sources_read.append("README.md")
-            for path, content in ctx["dep_files"].items():
-                deps += f"\n--- {path} ---\n{content}"
+            for path in sorted(ctx["dep_files"]):
+                deps += f"\n--- {path} ---\n{ctx['dep_files'][path]}"
                 sources_read.append(path)
             if not structure and ctx["tree"]:
-                structure = "\n".join(ctx["tree"][:80])
+                structure = "\n".join(sorted(ctx["tree"])[:80])
 
-            # candidates the agent may ask to read
-            candidates = [p for p in ctx["tree"]
-                          if p.lower().endswith((".md", ".rst", ".txt"))
-                          and "license" not in p.lower() and p != "README.md"][:100]
+            # candidates the agent may ask to read.
+            # sorted(): GitHub trả cây file không đảm bảo thứ tự cố định. Danh sách
+            # đảo thứ tự -> prompt khác -> agent chọn bộ file khác -> Task Graph khác
+            # hẳn dù repo y nguyên. Đây là chỗ khuếch đại dao động mạnh nhất của luồng 2.
+            candidates = sorted(p for p in ctx["tree"]
+                                if p.lower().endswith((".md", ".rst", ".txt"))
+                                and "license" not in p.lower() and p != "README.md")[:100]
             if candidates:
                 plan = call_json(
                     MODEL_FAST, REPO_DECIDE_SYSTEM,
                     "=== README (rút gọn) ===\n" + readme[:4000]
-                    + "\n\n=== Dependency files đã tự lấy ===\n" + (", ".join(ctx["dep_files"]) or "(không có)")
+                    + "\n\n=== Dependency files đã tự lấy ===\n"
+                    + (", ".join(sorted(ctx["dep_files"])) or "(không có)")
                     + "\n\n=== Danh sách file có thể đọc thêm ===\n" + "\n".join(candidates)
                     + "\n\nQuyết định theo RepoReadPlan.",
                     RepoReadPlan,
                 )
                 if not plan.enough and plan.files_to_read:
-                    valid = [p for p in plan.files_to_read if p in candidates]
+                    # sorted() lần nữa: agent chọn đúng bộ file nhưng liệt kê khác thứ tự
+                    # thì extra_docs ghép khác thứ tự -> prompt luồng 2 vẫn đổi.
+                    valid = sorted({p for p in plan.files_to_read if p in candidates})
                     extra = fetch_extra_files(ctx["owner"], ctx["repo"], valid)
-                    for path, content in extra.items():
-                        extra_docs += f"\n\n=== File: {path} ===\n{content[:12000]}"
-                        sources_read.append(path)
+                    for path in valid:
+                        content = extra.get(path)
+                        if content:
+                            extra_docs += f"\n\n=== File: {path} ===\n{content[:12000]}"
+                            sources_read.append(path)
 
     proj_input = (
         "=== Tên dự án ===\n" + (setup.get("projectName") or "(chưa đặt tên)")

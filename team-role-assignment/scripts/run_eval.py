@@ -6,6 +6,7 @@ Out:  in bảng PASS/FAIL + ghi eval/results.md (kể cả case fail).
 Chuẩn đạt cam kết (không hạ): >=75% case pass VÀ 0 lần AI bịa skill không có bằng chứng.
 """
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -13,6 +14,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+# Eval phải gọi model THẬT. Ăn cache thì con số chỉ đo lại lượt chạy cũ,
+# không phát hiện được prompt vừa sửa làm hỏng gì. Phải đặt TRƯỚC khi import src.llm.
+os.environ["LLM_CACHE_TTL"] = "0"
 
 from src.llm import MODEL_FAST, call_json                     # noqa: E402
 from src.pipeline import (REPO_DECIDE_SYSTEM, _calibrate_fit,  # noqa: E402
