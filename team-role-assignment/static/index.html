@@ -173,40 +173,63 @@ function computeFit(task, dev){
     reason: `Cặp này do bạn tự kéo — AI chưa chấm. Đối chiếu tên kỹ năng: khớp ${have}/${task.skills.length}`
       + (missing.length ? ` · chưa có: ${missing.join(', ')}` : '') + '.' };
 }
+/* Bề rộng chữ ước lượng (Public Sans ~0.56em/ký tự). Dùng để tính khung SVG:
+   khung vuông + pad cố định như trước không đủ chỗ cho nhãn trái/phải, nên
+   "Kỹ thuật viết prompt" ở góc trái/phải bị viền cắt mất một nửa. */
+function textWidth(str, fontSize){ return String(str).length * fontSize * 0.56; }
+
+/* Đặt nhãn quanh vòng tròn (tâm 0,0) rồi trả luôn viewBox ôm sát hộp bao thật
+   của mọi nhãn — chữ dài đến đâu khung nới ra đến đó, không cắt. */
+function radarLabelBox(names, R, gap, fontSize, angleFor){
+  let minX = -R, maxX = R, minY = -R, maxY = R;
+  const labels = names.map((nm, i) => {
+    const a = angleFor(i), ca = Math.cos(a);
+    const anchor = ca > 0.3 ? 'start' : ca < -0.3 ? 'end' : 'middle';
+    const x = (R + gap) * ca, y = (R + gap) * Math.sin(a) + fontSize * 0.34;
+    const w = textWidth(nm, fontSize);
+    const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+    minX = Math.min(minX, x0); maxX = Math.max(maxX, x0 + w);
+    minY = Math.min(minY, y - fontSize * 0.85); maxY = Math.max(maxY, y + fontSize * 0.3);
+    return { x, y, anchor, name: nm };
+  });
+  const m = 6;   // chừa mép để nét chữ không sát viền
+  return { labels,
+    vb: `${(minX - m).toFixed(1)} ${(minY - m).toFixed(1)} ${(maxX - minX + 2 * m).toFixed(1)} ${(maxY - minY + 2 * m).toFixed(1)}`,
+    w: Math.round(maxX - minX + 2 * m), h: Math.round(maxY - minY + 2 * m) };
+}
+
 /* Radar cá nhân — số trục co theo số kỹ năng thật (3 đến MAX_RADAR_AXES).
    Trước đây cắt cứng 6 trục: ai có 8 kỹ năng thì 2 cái biến mất khỏi hình dù
    bảng bên dưới vẫn liệt kê -> nhìn hai chỗ ra hai con số khác nhau.
-   Khung vẽ và chỗ để nhãn cũng phải giãn theo, không thì chữ tràn ra ngoài. */
+   Tâm hình đặt ở (0,0); viewBox tính ngược từ nhãn nên khung luôn vừa nội dung. */
 const MAX_RADAR_AXES = 20;   // bằng số trục tối đa một người có thể khai; hơn nữa thì nhãn dính nhau
 function buildRadar(skills){
   const sorted = [...(skills || [])].sort((a, b) => b.level - a.level);
   const axes = sorted.slice(0, MAX_RADAR_AXES);
   const hidden = Math.max(0, sorted.length - axes.length);
   const n = Math.max(3, axes.length);
-  // nhiều trục -> hình to hơn để nhãn không chồng nhau
-  const size = n <= 5 ? 260 : n <= 7 ? 290 : n <= 10 ? 330 : n <= 14 ? 390 : 450;
-  const pad = n <= 10 ? 52 : n <= 14 ? 62 : 72;
-  const cx = size / 2, cy = size / 2, R = size / 2 - pad;
+  // nhiều trục -> bán kính lớn hơn để nhãn không chồng nhau theo chiều dọc
+  const R = n <= 5 ? 78 : n <= 7 ? 88 : n <= 10 ? 100 : n <= 14 ? 118 : 138;
+  const cx = 0, cy = 0;
   const angleFor = i => (-90 + i * (360 / n)) * Math.PI / 180;
   const pointsFor = (fn) => axes.map((sk, i) => {
     const ang = angleFor(i); const r = fn(sk) * R;
-    return `${(cx + r * Math.cos(ang)).toFixed(1)},${(cy + r * Math.sin(ang)).toFixed(1)}`;
+    return `${(r * Math.cos(ang)).toFixed(1)},${(r * Math.sin(ang)).toFixed(1)}`;
   }).join(' ');
   const fontSize = n <= 10 ? 10 : n <= 14 ? 9.5 : 9;
-  const maxChars = n <= 10 ? 15 : n <= 14 ? 13 : 11;
-  return { size, cx, cy, hidden, count: axes.length, fontSize,
+  const maxChars = n <= 10 ? 16 : n <= 14 ? 14 : 12;
+  const names = axes.map(sk => {
+    const full = skillLabel(sk.name);
+    return full.length > maxChars ? full.slice(0, maxChars - 1) + '…' : full;
+  });
+  const box = radarLabelBox(names, R, 16, fontSize, angleFor);
+  return { vb: box.vb, w: box.w, h: box.h, cx, cy, hidden, count: axes.length, fontSize,
     valuePoints: pointsFor(sk => sk.level / 100),
     grid100: pointsFor(() => 1), grid75: pointsFor(() => 0.75), grid50: pointsFor(() => 0.5), grid25: pointsFor(() => 0.25),
-    axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: cx + R * Math.cos(a), y2: cy + R * Math.sin(a) }; }),
+    axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: R * Math.cos(a), y2: R * Math.sin(a) }; }),
     dots: axes.map((sk, i) => { const a = angleFor(i), r = R * sk.level / 100;
-      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), level: sk.level, name: skillLabel(sk.name) }; }),
-    labels: axes.map((sk, i) => {
-      const a = angleFor(i), lr = R + 20, ca = Math.cos(a);
-      const full = skillLabel(sk.name);
-      return { x: cx + lr * ca, y: cy + lr * Math.sin(a) + 3,
-        anchor: ca > 0.3 ? 'start' : ca < -0.3 ? 'end' : 'middle',
-        name: full.length > maxChars ? full.slice(0, maxChars - 1) + '…' : full, full, level: sk.level };
-    }),
+      return { x: r * Math.cos(a), y: r * Math.sin(a), level: sk.level, name: skillLabel(sk.name) }; }),
+    labels: axes.map((sk, i) => ({ ...box.labels[i], full: skillLabel(sk.name), level: sk.level })),
   };
 }
 function chipWidth(text, size){ return Math.round(text.length * size * 0.58) + 26; }
@@ -731,28 +754,28 @@ function teamRadarData(maxAxes){
 function renderTeamRadar(size){
   const rows = teamRadarData(8);
   if (rows.length < 3) return '<div style="font-size:12.5px;color:#94a3b8;padding:16px;">Cần ít nhất 3 kỹ năng để vẽ radar.</div>';
-  const S2 = size || 320, cx = S2 / 2, cy = S2 / 2, R = S2 / 2 - 52;
-  const n = rows.length;
+  // Tâm ở (0,0), viewBox tính ngược từ hộp bao của nhãn nên chữ hai bên không bị cắt.
+  const R = Math.max(90, (size || 320) / 2 - 52);
+  const n = rows.length, FS = 10.5, MAXC = 16;
   const ang = i => (-90 + i * 360 / n) * Math.PI / 180;
-  const pt = (i, r) => [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))];
+  const pt = (i, r) => [r * Math.cos(ang(i)), r * Math.sin(ang(i))];
   const poly = (vals) => vals.map((v, i) => pt(i, R * Math.max(0, Math.min(100, v)) / 100).map(x => x.toFixed(1)).join(',')).join(' ');
+  const names = rows.map(r => r.label.length > MAXC ? r.label.slice(0, MAXC - 1) + '…' : r.label);
+  const box = radarLabelBox(names, R, 18, FS, ang);
   const rings = [25, 50, 75, 100].map(p =>
     `<polygon points="${poly(rows.map(()=>p))}" fill="none" stroke="#e2e8f0" stroke-width="1"></polygon>`).join('');
   const spokes = rows.map((_, i) => { const [x, y] = pt(i, R);
-    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"></line>`; }).join('');
+    return `<line x1="0" y1="0" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"></line>`; }).join('');
   const dots = rows.map((r, i) => { const [x, y] = pt(i, R * r.best / 100);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#2563EB"><title>${esc(r.label)}: nhóm cao nhất ${r.best}${r.bestDev?' ('+esc(r.bestDev)+')':''}</title></circle>`; }).join('');
   const labels = rows.map((r, i) => {
-    const [x, y] = pt(i, R + 22);
-    const a = Math.cos(ang(i));
-    const anchor = a > 0.3 ? 'start' : a < -0.3 ? 'end' : 'middle';
+    const lb = box.labels[i];
     const gap = r.best < 40, weak = r.best >= 40 && r.best < 60;
     const color = gap ? '#dc2626' : weak ? '#b45309' : '#334155';
-    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="10.5" font-weight="700"
-      font-family="Public Sans, sans-serif" fill="${color}">${esc(r.label.length > 18 ? r.label.slice(0,17)+'…' : r.label)}
-      <title>${esc(r.label)} — ${r.tasks} việc cần, nhóm cao nhất ${r.best}</title></text>`;
+    return `<text x="${lb.x.toFixed(1)}" y="${lb.y.toFixed(1)}" text-anchor="${lb.anchor}" font-size="${FS}" font-weight="700"
+      font-family="Public Sans, sans-serif" fill="${color}">${esc(lb.name)}<title>${esc(r.label)} — ${r.tasks} việc cần, nhóm cao nhất ${r.best}</title></text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${S2} ${S2}" style="width:100%;max-width:${S2}px;display:block;margin:0 auto;">
+  return `<svg viewBox="${box.vb}" style="width:100%;max-width:${box.w}px;height:auto;display:block;margin:0 auto;">
     ${rings}${spokes}
     <polygon points="${poly(rows.map(r => r.need))}" fill="rgba(99,102,241,0.10)" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 4"></polygon>
     <polygon points="${poly(rows.map(r => r.best))}" fill="rgba(37,99,235,0.22)" stroke="#2563EB" stroke-width="2"></polygon>
@@ -1230,9 +1253,9 @@ function renderDevelopers(){
           <div><span style="color:oklch(0.5 0.01 85);">Framework:</span> <strong>${esc(d.frameworks||'—')}</strong></div>
         </div>
         <div style="font-size:12.5px;color:oklch(0.4 0.01 85);margin-bottom:16px;line-height:1.5;background:oklch(0.98 0.003 85);border-radius:10px;padding:12px 14px;">${esc(d.summary)}</div>
-        <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:22px;border-top:1px solid oklch(0.94 0.005 85);border-bottom:1px solid oklch(0.94 0.005 85);padding:20px 0;">
-          <div style="flex:0 0 auto;">
-          <svg viewBox="0 0 ${radar.size} ${radar.size}" width="${radar.size}" height="${radar.size}">
+        <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:22px;border-top:1px solid oklch(0.94 0.005 85);border-bottom:1px solid oklch(0.94 0.005 85);padding:20px 0;flex-wrap:wrap;">
+          <div style="flex:0 1 auto;min-width:0;max-width:100%;">
+          <svg viewBox="${radar.vb}" width="${radar.w}" height="${radar.h}" style="max-width:100%;height:auto;display:block;">
             <polygon points="${radar.grid100}" fill="none" stroke="oklch(0.88 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid75}" fill="none" stroke="oklch(0.9 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid50}" fill="none" stroke="oklch(0.92 0.006 85)" stroke-width="1"></polygon>
