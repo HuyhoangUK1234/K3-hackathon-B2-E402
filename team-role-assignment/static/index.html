@@ -22,6 +22,8 @@
   .member-card.hl{border-color:var(--mc,#2563eb);background:var(--mbg,#f8fafc);box-shadow:0 4px 12px rgba(15,23,42,.08);}
   .legend-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:10px;font-size:11.5px;font-weight:700;cursor:pointer;transition:box-shadow .15s;}
   .legend-pill.hl{box-shadow:0 0 0 2px var(--mbd,#cbd5e1);}
+  /* ma trận kỹ năng: soi cột của người đang rê chuột */
+  th.hl,td.hl{background:var(--mbg,#f1f5f9);box-shadow:inset 0 0 0 2px var(--mc,#2563eb);border-radius:8px;}
   @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
   .fadeIn{animation:fadeIn .3s ease;}
   * { box-sizing: border-box; }
@@ -104,6 +106,11 @@ function skillLabel(id){
   return o ? o.label : String(id == null ? '' : id);
 }
 function skillNames(list){ return (list||[]).map(skillLabel).join(', '); }
+/* Chuỗi nhét vào onclick="App.x('...')": kỹ năng ngoài danh mục giữ nguyên tên LLM trả,
+   một dấu nháy đơn (VD "O'Reilly") là đủ làm vỡ handler. Escape cho JS rồi mới cho HTML. */
+function jsq(s){
+  return esc(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
 function emptyMember(){ return { name:'', github:'', skillIds:[], wantLearnIds:[], languages:'', frameworks:'', experienceYears:1, readiness:7 }; }
 function sampleSetup(){
   return { projectName:'', repoUrl:'https://github.com/HuyhoangUK1234/Day04-E402-TeamB2',
@@ -340,6 +347,9 @@ const App = {
     }
     S.role = role; S.user.role = role;
     if (role === 'coach') { S.user = { name: S.coach.name, role:'coach', dept:'Lab Coach #' + S.coach.id }; S.stage = 'coach'; App.loadCoachData(); }
+    // Đang dở màn chốt kỹ năng (chưa phân công) mà nhảy sang Coach rồi quay lại
+    // thì phải về đúng màn đó, không rơi vào dashboard rỗng.
+    else if (S.draftId && !Object.keys(S.FIT_MATRIX || {}).length && S.gaps.length) S.stage = 'gaps';
     else { S.stage = S.DEVS.length ? 'app' : 'setup'; }
     render();
   },
@@ -372,8 +382,10 @@ const App = {
     S.warnings = data.warnings || []; S.workloadNotes = data.workloadNotes || '';
     S.SKILL_COVERAGE = data.skillCoverage || [];
     S.SKILL_CATALOG = data.skillCatalog || {};
-    S.gaps = data.skillGaps || S.gaps || [];
-    S.gapPick = data.volunteers || S.gapPick || {};
+    // Nhóm cũ (phân tích trước khi có tính năng này) không có skillGaps -> phải rỗng,
+    // không được giữ lại của nhóm mở trước đó.
+    S.gaps = data.skillGaps || [];
+    S.gapPick = data.volunteers || {};
     S.taskStatus = data.taskStatus || {};
     S.unassignedTaskIds = data.unassignedTaskIds || [];
     S.groupId = data.groupId || null; S.groupStatus = data.status || 'Analyzed';
@@ -705,7 +717,7 @@ function skillTagField(i, mode, labelText){
   const color = mode === 'want' ? {bg:'#fef3c7', fg:'#b45309', bd:'#fde68a'} : {bg:'#dbeafe', fg:'#1d4ed8', bd:'#bfdbfe'};
   const chips = ids.map(id => `<span style="display:inline-flex;align-items:center;gap:5px;background:${color.bg};color:${color.fg};border:1px solid ${color.bd};font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:9px;">
       ${esc(skillLabel(id))}
-      <button title="Bỏ chọn" onclick="App.toggleMemberSkill(${i},'${mode}','${id}')" style="border:none;background:transparent;color:${color.fg};cursor:pointer;font-size:12px;line-height:1;padding:0;">✕</button></span>`).join('');
+      <button title="Bỏ chọn" onclick="App.toggleMemberSkill(${i},'${mode}','${jsq(id)}')" style="border:none;background:transparent;color:${color.fg};cursor:pointer;font-size:12px;line-height:1;padding:0;">✕</button></span>`).join('');
   return `<div style="font-size:11.5px;font-weight:700;margin-bottom:5px;color:oklch(0.45 0.01 85);">${labelText}</div>
     <div style="border:1px solid oklch(0.92 0.006 85);border-radius:8px;padding:7px;min-height:38px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
       ${chips || '<span style="font-size:11.5px;color:#94a3b8;">Chưa chọn</span>'}
@@ -724,7 +736,7 @@ function skillOptionList(){
   if (!opts.length) return '<div style="font-size:12.5px;color:#94a3b8;padding:10px;">Không có kỹ năng nào khớp. Công nghệ ngoài danh mục thì điền ở ô "Công nghệ khác".</div>';
   return opts.map(o => {
     const on = chosen.includes(o.id);
-    return `<button onclick="App.toggleMemberSkill(${i},'${mode}','${o.id}')" style="text-align:left;width:100%;border:1px solid ${on?'#2563eb':'#e2e8f0'};background:${on?'#eff6ff':'#fff'};border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;">
+    return `<button onclick="App.toggleMemberSkill(${i},'${mode}','${jsq(o.id)}')" style="text-align:left;width:100%;border:1px solid ${on?'#2563eb':'#e2e8f0'};background:${on?'#eff6ff':'#fff'};border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;">
       <div style="font-size:12.5px;font-weight:800;color:${on?'#1d4ed8':'#0f172a'};">${on?'✓ ':''}${esc(o.label)}
         <span style="font-weight:600;color:#94a3b8;font-family:monospace;font-size:10.5px;">${esc(o.id)}</span></div>
       <div style="font-size:11.5px;color:#64748b;margin-top:2px;line-height:1.4;">${esc(o.description||'')}</div>
@@ -786,7 +798,7 @@ function renderGaps(){
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <span style="font-size:11.5px;font-weight:700;color:#475569;">Ai sẽ nhận học phần này?</span>
-        <select onchange="App.setGapPick('${g.skill}', this.value)"
+        <select onchange="App.setGapPick('${jsq(g.skill)}', this.value)"
           style="flex:1;min-width:200px;font-size:12.5px;padding:7px 10px;border-radius:9px;border:1px solid #cbd5e1;background:#fff;outline:none;cursor:pointer;">${opts}</select>
       </div>
     </div>`;
@@ -1043,7 +1055,7 @@ function renderDashboard(){
 function renderDevelopers(){
   const allSkillNames = [...new Set(S.DEVS.flatMap(d => devSkills(d.id).map(sk => sk.name)))];
   const chips = ['all', ...allSkillNames].map(name =>
-    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${esc(name)}')">${name==='all'?'Tất cả':esc(skillLabel(name))}</button>`).join('');
+    `<button style="border:1px solid ${S.devSkillFilter===name?'oklch(0.56 0.15 262)':'oklch(0.9 0.006 85)'};background:${S.devSkillFilter===name?'oklch(0.93 0.03 262)':'oklch(0.995 0.003 85)'};color:${S.devSkillFilter===name?'oklch(0.4 0.13 262)':'oklch(0.4 0.01 85)'};font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:14px;cursor:pointer;" onclick="App.setSkillFilter('${jsq(name)}')">${name==='all'?'Tất cả':esc(skillLabel(name))}</button>`).join('');
   const filtered = S.DEVS.filter(d => {
     const mS = d.name.toLowerCase().includes(S.devSearch.toLowerCase());
     const mK = S.devSkillFilter === 'all' || devSkills(d.id).some(sk => sk.name === S.devSkillFilter);
