@@ -331,13 +331,26 @@ const App = {
     }
     S.role = role;
     S.stage = role === 'coach' ? 'coach' : 'setup';
+    saveSession();
     if (role === 'coach') App.loadCoachData();
     render();
   },
   selectCoach(id){ S.coach = S.coaches.find(c => String(c.id) === String(id)) || S.coach;
     if (S.coach) S.user = { name: S.coach.name, role: 'coach', dept: 'Lab Coach #' + S.coach.id };
-    render(); },
-  logout(){ S.user = null; S.coach = null; S.role = 'student'; S.stage = 'login'; render(); },
+    saveSession(); render(); },
+  logout(){ S.user = null; S.coach = null; S.role = 'student'; S.stage = 'login'; clearSession(); render(); },
+  /* Bắt đầu hẳn một dự án mới: xoá sạch kết quả cũ chứ không giữ lại nửa vời. */
+  newProject(){
+    S.setup = sampleSetup(); S.members = sampleMembers();
+    S.DEVS = []; S.TASKS = []; S.LABS = []; S.PROJECT = null;
+    S.FIT_MATRIX = {}; S.assignments = {}; S.DEFAULT_ASSIGNMENTS = {};
+    S.warnings = []; S.workloadNotes = ''; S.SKILL_COVERAGE = []; S.unassignedTaskIds = [];
+    S.taskStatus = {}; S.gaps = []; S.gapPick = {}; S.draftId = null;
+    S.groupId = null; S.groupStatus = 'Analyzed'; S.coachFeedback = ''; S.createdAt = '';
+    S.tickets = []; S.setupStep = 1; S.analyzeError = ''; S.saveError = '';
+    S.selectedDevId = null; S.currentUserId = null;
+    S.stage = 'setup'; S.view = 'dashboard'; render();
+  },
   async switchRole(role){
     if (!S.user) return;
     if (role === 'coach' && !S.coach) {
@@ -346,7 +359,8 @@ const App = {
       S.coach = S.coaches[0];
     }
     S.role = role; S.user.role = role;
-    if (role === 'coach') { S.user = { name: S.coach.name, role:'coach', dept:'Lab Coach #' + S.coach.id }; S.stage = 'coach'; App.loadCoachData(); }
+    saveSession();
+    if (role === 'coach') { S.user = { name: S.coach.name, role:'coach', dept:'Lab Coach #' + S.coach.id }; S.stage = 'coach'; saveSession(); App.loadCoachData(); }
     // Đang dở màn chốt kỹ năng (chưa phân công) mà nhảy sang Coach rồi quay lại
     // thì phải về đúng màn đó, không rơi vào dashboard rỗng.
     else if (S.draftId && !Object.keys(S.FIT_MATRIX || {}).length && S.gaps.length) S.stage = 'gaps';
@@ -1101,7 +1115,8 @@ function renderDevelopers(){
 
   return `<div>
     <div style="margin-bottom:20px;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Luồng 1 — Phân tích lập trình viên</div>
+      <button class="pill-btn" style="background:#f1f5f9;color:#334155;margin-bottom:10px;" onclick="App.setView('dashboard')">← Quay lại tổng quan</button>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:26px;">Hồ sơ năng lực thành viên</div>
       <div style="font-size:14px;color:oklch(0.5 0.01 85);margin-top:4px;">Số commit/PR/issue đọc thẳng từ GitHub API. Mức thành thạo và lộ trình do AI đánh giá, mỗi kỹ năng kèm bằng chứng.</div>
     </div>
     <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start;">
@@ -1745,12 +1760,13 @@ function renderNavbar(){
     <button class="pill-btn" style="background:${S.role==='coach'?'#4f46e5':'transparent'};color:${S.role==='coach'?'#fff':'#475569'};" onclick="App.switchRole('coach')">🛡️ Lab Coach</button>
   </div>`;
   return `<div style="position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-    <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="${S.role==='coach'?'App.backToCoach()':'App.backToSetup()'}">
+    <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="${S.role==='coach'?'App.backToCoach()':(S.groupId?"App.setView('dashboard')":'App.newProject()')}">
       <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#2563eb,#6366f1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">✦</div>
       <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:16px;letter-spacing:-0.01em;">AI Lab Team</div>
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      ${inApp && S.role==='student' ? `<button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;" onclick="App.backToSetup()">↻ Tạo phân công mới</button>` : ''}
+      ${S.role==='student' && S.stage!=='setup' ? `<button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;" onclick="App.newProject()">＋ Dự án mới</button>` : ''}
+      ${inApp ? `<button class="pill-btn" style="background:#fff;border:1px solid #e2e8f0;color:#334155;" onclick="history.back()">← Quay lại</button>` : ''}
       ${rolePill}
       ${S.role==='coach' && S.coaches.length>1 ? `<select onchange="App.selectCoach(this.value)" style="font-size:12px;font-weight:700;padding:7px 9px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;">
         ${S.coaches.map(c=>`<option value="${esc(c.id)}" ${S.coach&&String(S.coach.id)===String(c.id)?'selected':''}>${esc(c.name)} #${esc(c.id)}</option>`).join('')}</select>` : ''}
@@ -2147,6 +2163,7 @@ function gateAnim(html){
 
 function render(){
   const root = document.getElementById('root');
+  syncHash();
   if (S.stage === 'login') { root.innerHTML = gateAnim(renderLogin()); return; }
   if (S.stage === 'coach') {
     root.innerHTML = gateAnim(`<div style="min-height:100vh;">${renderNavbar()}${renderCoach()}${renderTicketDetailModal()}${renderTicketModal()}</div>`);
@@ -2183,6 +2200,95 @@ function render(){
   const box = document.getElementById('chat-scroll'); if (box) box.scrollTop = box.scrollHeight;
 }
 
+/* ================= Điều hướng theo URL =================
+   Trước đây mọi thứ nằm trong biến JS: F5 là mất sạch, quay lại trang cấu hình.
+   Giờ mỗi màn có địa chỉ riêng (#/group/G123/board), phiên đăng nhập lưu ở
+   localStorage, nên F5 và nút Back của trình duyệt đều hoạt động. */
+const SESSION_KEY = 'ailab.session';
+function saveSession(){
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ role: S.role, user: S.user, coach: S.coach })); } catch(e){}
+}
+function clearSession(){ try { localStorage.removeItem(SESSION_KEY); } catch(e){} }
+function restoreSession(){
+  if (S.user) return true;
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (s && s.user) { S.user = s.user; S.role = s.role || 'student'; S.coach = s.coach || null; return true; }
+  } catch(e){}
+  return false;
+}
+
+function currentRoute(){
+  if (!S.user || S.stage === 'login') return '#/login';
+  if (S.stage === 'setup') return '#/setup';
+  if (S.stage === 'analyzing') return '#/analyzing';
+  if (S.stage === 'gaps') return S.draftId ? '#/gaps/' + S.draftId : '#/setup';
+  if (S.stage === 'coach') return '#/coach/' + (S.page === 'tickets' ? 'tickets' : 'groups');
+  if (S.stage === 'app') {
+    const base = '#/group/' + (S.groupId || 'moi') + '/' + (S.view || 'dashboard');
+    return (S.view === 'developers' && S.selectedDevId) ? base + '/' + S.selectedDevId : base;
+  }
+  return '#/login';
+}
+
+let ROUTING = false;
+function syncHash(){
+  const r = currentRoute();
+  if (location.hash === r) return;
+  ROUTING = true;                       // đổi hash do state, không phải người bấm Back
+  location.hash = r;
+  setTimeout(() => { ROUTING = false; }, 0);
+}
+
+async function applyRoute(){
+  const parts = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+  const head = parts[0] || '';
+  if (!restoreSession() || !head || head === 'login') { S.stage = 'login'; render(); return; }
+
+  if (head === 'coach') {
+    if (!S.coach) {
+      try { S.coaches = await fetch('/api/coaches').then(r => r.json()); S.coach = S.coaches[0] || null; } catch(e){}
+    }
+    S.role = 'coach'; if (S.user) S.user.role = 'coach';
+    S.page = parts[1] === 'tickets' ? 'tickets' : 'groups';
+    S.stage = 'coach'; render(); App.loadCoachData(); return;
+  }
+  if (head === 'setup' || head === 'analyzing') { S.stage = 'setup'; render(); return; }
+
+  if (head === 'gaps' && parts[1]) {
+    if (S.draftId !== parts[1] || !S.gaps.length) {
+      try {
+        const d = await fetch('/api/drafts/' + parts[1]).then(r => r.json());
+        if (!d || d.error) { S.stage = 'setup'; render(); return; }
+        S.draftId = parts[1]; S.DEVS = d.devs; S.TASKS = d.tasks; S.LABS = d.labs;
+        S.PROJECT = d.project; S.SKILL_CATALOG = d.skillCatalog || {};
+        S.gaps = d.skillGaps || []; S.gapPick = {};
+        (S.gaps || []).forEach(g => { if (g.suggested && g.suggested.length) S.gapPick[g.skill] = g.suggested[0]; });
+      } catch(e) { S.stage = 'setup'; render(); return; }
+    }
+    S.matching = false; S.stage = 'gaps'; render(); return;
+  }
+
+  if (head === 'group' && parts[1] && parts[1] !== 'moi') {
+    if (S.groupId !== parts[1]) {
+      try {
+        const data = await fetch('/api/groups/' + parts[1]).then(r => r.json());
+        if (data.error) { S.stage = S.role === 'coach' ? 'coach' : 'setup'; render(); return; }
+        App.applyPayload(data);
+        App.loadGroupTickets();
+      } catch(e) { S.stage = 'setup'; render(); return; }
+    }
+    S.view = parts[2] || 'dashboard';
+    if (S.view === 'developers' && parts[3]) S.selectedDevId = parts[3];
+    S.stage = 'app'; render(); return;
+  }
+
+  S.stage = S.DEVS.length ? 'app' : (S.role === 'coach' ? 'coach' : 'setup');
+  render();
+}
+
+window.addEventListener('hashchange', () => { if (!ROUTING) applyRoute(); });
+
 /* Chọn 1 tag là re-render cả trang -> ô tìm kiếm mất focus; trả lại con trỏ cuối chuỗi. */
 function focusSkillSearch(){
   if (!S.skillPicker) return;
@@ -2190,8 +2296,8 @@ function focusSkillSearch(){
   if (el && document.activeElement !== el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
 }
 
-render();
 App.loadSkills();
+applyRoute();          // mở đúng màn theo URL (F5 không mất chỗ đang đứng)
 </script>
 </body>
 </html>

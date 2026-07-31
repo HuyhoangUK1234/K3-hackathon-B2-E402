@@ -210,6 +210,15 @@ def analyze_prepare_step(req: AnalyzeRequest):
     return {"draftId": draft_id, **draft}
 
 
+@app.get("/api/drafts/{draft_id}")
+def get_draft(draft_id: str):
+    """Lấy lại bản nháp để F5 giữa chừng không mất màn chốt kỹ năng."""
+    entry = next((d for d in _load("drafts.json") if d["id"] == draft_id), None)
+    if entry is None:
+        return JSONResponse(status_code=404, content={"error": "Bản nháp không còn."})
+    return {"draftId": entry["id"], **entry["draft"]}
+
+
 @app.post("/api/analyze/match")
 def analyze_match_step(req: MatchRequest):
     """Luồng 3 trên bản nháp đã chuẩn bị, có kèm quyết định ai học kỹ năng thiếu."""
