@@ -169,20 +169,37 @@ function computeFit(task, dev){
     reason: `Cặp này do bạn tự kéo — AI chưa chấm. Đối chiếu tên kỹ năng: khớp ${have}/${task.skills.length}`
       + (missing.length ? ` · chưa có: ${missing.join(', ')}` : '') + '.' };
 }
+/* Radar cá nhân — số trục co theo số kỹ năng thật (3 đến MAX_RADAR_AXES).
+   Trước đây cắt cứng 6 trục: ai có 8 kỹ năng thì 2 cái biến mất khỏi hình dù
+   bảng bên dưới vẫn liệt kê -> nhìn hai chỗ ra hai con số khác nhau.
+   Khung vẽ và chỗ để nhãn cũng phải giãn theo, không thì chữ tràn ra ngoài. */
+const MAX_RADAR_AXES = 10;
 function buildRadar(skills){
-  const R = 85, cx = 110, cy = 110;
-  const axes = skills.slice(0, 6);
+  const sorted = [...(skills || [])].sort((a, b) => b.level - a.level);
+  const axes = sorted.slice(0, MAX_RADAR_AXES);
+  const hidden = Math.max(0, sorted.length - axes.length);
   const n = Math.max(3, axes.length);
+  // nhiều trục -> hình to hơn để nhãn không chồng nhau
+  const size = n <= 5 ? 260 : n <= 7 ? 290 : 320;
+  const cx = size / 2, cy = size / 2, R = size / 2 - 52;
   const angleFor = i => (-90 + i * (360 / n)) * Math.PI / 180;
   const pointsFor = (fn) => axes.map((sk, i) => {
     const ang = angleFor(i); const r = fn(sk) * R;
-    return `${cx + r * Math.cos(ang)},${cy + r * Math.sin(ang)}`;
+    return `${(cx + r * Math.cos(ang)).toFixed(1)},${(cy + r * Math.sin(ang)).toFixed(1)}`;
   }).join(' ');
-  return { cx, cy,
+  return { size, cx, cy, hidden, count: axes.length,
     valuePoints: pointsFor(sk => sk.level / 100),
     grid100: pointsFor(() => 1), grid75: pointsFor(() => 0.75), grid50: pointsFor(() => 0.5), grid25: pointsFor(() => 0.25),
     axisLines: axes.map((sk, i) => { const a = angleFor(i); return { x2: cx + R * Math.cos(a), y2: cy + R * Math.sin(a) }; }),
-    labels: axes.map((sk, i) => { const a = angleFor(i); const lr = R + 18; return { x: cx + lr * Math.cos(a), y: cy + lr * Math.sin(a), name: skillLabel(sk.name) }; }),
+    dots: axes.map((sk, i) => { const a = angleFor(i), r = R * sk.level / 100;
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), level: sk.level, name: skillLabel(sk.name) }; }),
+    labels: axes.map((sk, i) => {
+      const a = angleFor(i), lr = R + 20, ca = Math.cos(a);
+      const full = skillLabel(sk.name);
+      return { x: cx + lr * ca, y: cy + lr * Math.sin(a) + 3,
+        anchor: ca > 0.3 ? 'start' : ca < -0.3 ? 'end' : 'middle',
+        name: full.length > 15 ? full.slice(0, 14) + '…' : full, full, level: sk.level };
+    }),
   };
 }
 function chipWidth(text, size){ return Math.round(text.length * size * 0.58) + 26; }
@@ -1168,15 +1185,20 @@ function renderDevelopers(){
         </div>
         <div style="font-size:12.5px;color:oklch(0.4 0.01 85);margin-bottom:16px;line-height:1.5;background:oklch(0.98 0.003 85);border-radius:10px;padding:12px 14px;">${esc(d.summary)}</div>
         <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:22px;border-top:1px solid oklch(0.94 0.005 85);border-bottom:1px solid oklch(0.94 0.005 85);padding:20px 0;">
-          <svg viewBox="0 0 220 220" width="220" height="220" style="flex:0 0 auto;">
+          <div style="flex:0 0 auto;">
+          <svg viewBox="0 0 ${radar.size} ${radar.size}" width="${radar.size}" height="${radar.size}">
             <polygon points="${radar.grid100}" fill="none" stroke="oklch(0.88 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid75}" fill="none" stroke="oklch(0.9 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid50}" fill="none" stroke="oklch(0.92 0.006 85)" stroke-width="1"></polygon>
             <polygon points="${radar.grid25}" fill="none" stroke="oklch(0.94 0.006 85)" stroke-width="1"></polygon>
             ${radar.axisLines.map(ax => `<line x1="${radar.cx}" y1="${radar.cy}" x2="${ax.x2}" y2="${ax.y2}" stroke="oklch(0.9 0.006 85)" stroke-width="1"></line>`).join('')}
             <polygon points="${radar.valuePoints}" fill="oklch(0.56 0.15 262 / 0.22)" stroke="oklch(0.56 0.15 262)" stroke-width="2"></polygon>
-            ${radar.labels.map(lb => `<text x="${lb.x}" y="${lb.y}" text-anchor="middle" font-size="10" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}</text>`).join('')}
+            ${radar.dots.map(dt => `<circle cx="${dt.x.toFixed(1)}" cy="${dt.y.toFixed(1)}" r="3" fill="oklch(0.56 0.15 262)"><title>${esc(dt.name)}: ${dt.level}/100</title></circle>`).join('')}
+            ${radar.labels.map(lb => `<text x="${lb.x.toFixed(1)}" y="${lb.y.toFixed(1)}" text-anchor="${lb.anchor}" font-size="10" font-family="Public Sans, sans-serif" fill="oklch(0.4 0.01 85)" font-weight="600">${esc(lb.name)}<title>${esc(lb.full)}: ${lb.level}/100</title></text>`).join('')}
           </svg>
+          <div style="font-size:11px;color:oklch(0.55 0.01 85);text-align:center;margin-top:-4px;">
+            ${radar.count} trục kỹ năng${radar.hidden ? ` · còn ${radar.hidden} kỹ năng nữa xem ở bảng bên phải` : ''}</div>
+          </div>
           <div style="flex:1;">
             <div style="font-weight:700;font-size:13px;margin-bottom:10px;">Mức thành thạo & bằng chứng</div>
             ${skillBars}
