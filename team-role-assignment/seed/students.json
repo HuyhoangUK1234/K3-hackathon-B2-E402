@@ -167,5 +167,77 @@
                 ]
             }
         ]
+    },
+    {
+        "id": 6,
+        "name": "Ho Pham Duc Linh",
+        "MSSV": "2A202601533",
+        "github": "https://github.com/Linhindahood",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/Linhindahood/DAY01_2A202601533_HoPhamDucLinh",
+                "report": [
+                    "https://github.com/Linhindahood/DAY01_2A202601533_HoPhamDucLinh/blob/main/exercises.md",
+                    "https://github.com/Linhindahood/DAY01_2A202601533_HoPhamDucLinh/blob/main/solution/exercises.md"
+                ],
+                "group_report": [],
+                "blockers": [],
+                "intentions": []
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/Linhindahood/DAY02_2A202601533_HoPhamDucLinh",
+                "report": [
+                    "https://github.com/Linhindahood/DAY02_2A202601533_HoPhamDucLinh/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/Linhindahood/DAY02_2A202601533_HoPhamDucLinh/blob/main/03-individual-reflection/reflection.md"
+                ],
+                "group_report": [
+                    "https://github.com/Linhindahood/DAY02_2A202601533_HoPhamDucLinh/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    "Khó nhất là viết Success Metric không chung chung — phải có con số trước/sau và cách đo cụ thể, nhóm phải viết lại field này 2 lần",
+                    "Con số baseline 90 phút chủ yếu từ cảm nhận vài thành viên, chưa được validate rộng"
+                ],
+                "intentions": [
+                    "Challenge kỹ hơn về con số baseline, khảo sát thêm ít nhất 10 sinh viên trước khi chốt vào Problem Statement"
+                ]
+            }
+        ]
+    },
+    {
+        "id": 7,
+        "name": "Truong Cong Dat",
+        "MSSV": "2A202601449",
+        "github": "https://github.com/tcdat5",
+        "labs": [
+            {
+                "name": "lab1",
+                "repo_url": "https://github.com/tcdat5/K3-Day01-2A202601449-TruongCongDat",
+                "report": [],
+                "group_report": [],
+                "blockers": [],
+                "intentions": []
+            },
+            {
+                "name": "lab2",
+                "repo_url": "https://github.com/tcdat5/K3-Day02-2A202601449-TruongCongDat",
+                "report": [
+                    "https://github.com/tcdat5/K3-Day02-2A202601449-TruongCongDat/blob/main/01-individual-problem-scan/individual-report.md",
+                    "https://github.com/tcdat5/K3-Day02-2A202601449-TruongCongDat/blob/main/03-individual-reflection/reflection.md"
+                ],
+                "group_report": [
+                    "https://github.com/tcdat5/K3-Day02-2A202601449-TruongCongDat/blob/main/02-group-problem-statement/group-report.md"
+                ],
+                "blockers": [
+                    "Nhóm dễ rơi vào bẫy solution-first, ban đầu cuốn vào ý tưởng làm bot Discord tự động trả lời trước khi định hình workflow",
+                    "Validation ban đầu chỉ hỏi nhanh 3 bạn nên metric baseline 90 phút thiếu căn cứ thực nghiệm"
+                ],
+                "intentions": [
+                    "Chuẩn bị bảng khảo sát 10-15 sinh viên để lấy số liệu thời gian thật trên từng nền tảng",
+                    "Thử prompt/mockup sớm hơn — tự làm bản digest mẫu bằng tay để đo thời gian đọc giảm bao nhiêu"
+                ]
+            }
+        ]
     }
 ]
