@@ -124,7 +124,8 @@ function sampleSetup(){
 function sampleMembers(){
   const mk = (name, github) => ({ ...emptyMember(), name, github, readiness:8 });
   return [ mk('Bằng','its6ueq'), mk('Tâm','tranthithanhtam'),
-           mk('Tiến','vantiendl'), mk('Hoàng Việt','HuyhoangUK1234') ];
+           mk('Tiến','vantiendl'), mk('Hoàng Việt','HuyhoangUK1234'),
+           mk('Nga','ngatt-17') ];
 }
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 S.setup = sampleSetup();
