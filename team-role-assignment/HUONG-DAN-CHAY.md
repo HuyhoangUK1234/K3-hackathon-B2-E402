@@ -94,7 +94,7 @@ Muốn tắt: bấm `Ctrl + C` trong Command Prompt.
 4. Bấm **"Đưa cho AI phân tích"** → chờ 1-2 phút (AI đọc GitHub thật + gọi OpenAI thật).
 5. **Bước 3 — trước khi AI phân công**: app dừng lại, hiện **radar năng lực nhóm so với bài lab** và danh sách **kỹ năng cả nhóm còn hổng**. Với mỗi kỹ năng, chọn ai sẽ nhận học (người từng khai "muốn học" được gợi ý sẵn) rồi bấm **Phân công với lựa chọn này** — AI sẽ ưu tiên giao việc đó cho đúng người ấy. Không muốn chọn thì bấm **Bỏ qua, để AI tự quyết**.
 6. Xem kết quả qua các tab:
-   - **Tổng quan** — mặc định hiện gọn: ai làm phần nào + thanh % khối lượng. Cần xem sâu thì bấm **"Xem chi tiết"** để mở mô tả việc, cảnh báo của AI và bảng "Dự án cần gì — ai có?".
+   - **Tổng quan** — mặc định hiện gọn: ai làm phần nào + thanh % khối lượng. Cần xem sâu thì bấm **"Xem chi tiết"** để mở mô tả việc, cảnh báo của AI và bảng "Dự án cần gì — ai có?". Việc nào người nhận chưa có bằng chứng năng lực sẽ hiện chip đỏ **"⚠ phải học"** kèm ô cảnh báo riêng.
    - **Bảng việc** — kéo thẻ việc sang cột người khác để đổi người làm; bấm nhãn trạng thái để đổi *Chưa làm → Đang làm → Xong*. Dùng thay Jira cho nhóm nhỏ; thay đổi lưu cho cả nhóm và Lab Coach.
    - **Việc của tôi** — chọn mình là ai ở góc phải, xem việc còn trống để nhận hoặc trả lại việc.
    - **Tóm tắt bài lab** — AI tóm tắt đề bài + mục tiêu, liệt kê file đã tự đọc.
@@ -155,6 +155,9 @@ Bạn điền: tên + GitHub username + link repo bài lab
 [Luồng 3] Ghép người × việc → Fit Score + lý do trích dẫn bằng chứng
         → guardrail bằng code: ai cũng có việc; không ai giữ quá 50% khối lượng
           (chia không nổi thì nói thẳng lý do chứ không giấu)
+        → hiệu chỉnh Fit theo bằng chứng thật: người nhận không có kỹ năng việc đó
+          cần thì điểm bị hạ xuống dưới 50 và việc bị đánh dấu "phải học từ đầu",
+          kèm điểm gốc AI đã chấm để đối chiếu
         │
         ▼
 Kết quả chỉ là ĐỀ XUẤT — nhóm trưởng/Lab Coach duyệt và chỉnh mới chốt.

@@ -4,12 +4,12 @@
     "type1_khong_co_trong_du_lieu": ["P03", "P04", "P05", "D01", "D02", "D03", "C02", "N02"],
     "type2_mo_ho_thieu_ngu_canh": ["P02", "P06", "D04", "D05"],
     "type3_doi_thu_khong_duoc_phep": ["C01", "C04"],
-    "type4_sai_gay_hau_qua_that": ["D06", "M02", "M03", "M04", "M05", "M06", "C03", "G01", "G02", "N01"],
+    "type4_sai_gay_hau_qua_that": ["D06", "M02", "M03", "M04", "M05", "M06", "C03", "G01", "G02", "G03", "N01"],
     "happy_path": ["P01", "M01", "A01"]
   },
   "_real_observation_cases": {
-    "count": 14,
-    "ids": ["P03", "P04", "D03", "D04", "D06", "M03", "M04", "M05", "M06", "A01", "G01", "G02", "C01", "N01"],
+    "count": 15,
+    "ids": ["P03", "P04", "D03", "D04", "D06", "M03", "M04", "M05", "M06", "A01", "G01", "G02", "G03", "C01", "N01"],
     "sources": "Log các lần chạy thật với Team B2 ngày 29-30/07/2026 (fork-only profile, GitHub 404/rate-limit, matcher dồn việc, lệch pha skill, coverage quá khắt), phản hồi Lab Coach 31/07/2026 (điền 'NextJS' không khớp 'Next.js'), quy tắc chat từ yêu cầu người dùng, repo Day04-E402-TeamB2 thật."
   },
   "cases": [
@@ -88,6 +88,9 @@
     {"id": "G02", "flow": "guardrail", "type": "type4", "real": true,
      "desc": "Guardrail trần 50% (không LLM): LLM dồn 65% khối lượng cho 1 người — code phải chuyển việc tới khi dưới trần, và nói thật khi không chia nổi",
      "expected": "sau khi chặn trần, không ai giữ >50% nếu chia được; nhóm 2 người với 1 việc quá lớn thì vẫn >50% nhưng phải có cảnh báo nói rõ lý do"},
+    {"id": "G03", "flow": "guardrail", "type": "type4", "real": true,
+     "desc": "Lỗi thật 31/07 soi 6 nhóm đã lưu: LLM chấm Fit 70 cho người có mức 0 trên MỌI kỹ năng việc đó cần, và chưa lần nào dùng unassigned",
+     "expected": "không có trục nào -> Fit bị hạ xuống <=45 và vào danh sách rủi ro; đủ mạnh mọi trục -> giữ nguyên điểm; mạnh một phần -> trần 75; lưu lại điểm gốc của AI để đối chiếu"},
     {"id": "N01", "flow": "guardrail", "type": "type4", "real": true,
      "desc": "Lỗi thật Lab Coach báo 31/07: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau nên bảng báo thiếu oan",
      "expected": "canon('NextJS')==canon('Next.js')==canon('next js')=='ui-frontend'; các biến thể FastAPI/OpenAI API/Kiểm thử cũng về đúng trục"},

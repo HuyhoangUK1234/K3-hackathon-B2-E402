@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.llm import MODEL_FAST, call_json                     # noqa: E402
-from src.pipeline import (REPO_DECIDE_SYSTEM, _cap_workload,  # noqa: E402
-                          _rebalance, analyze_project_ui, chat_reply,
-                          match_ui, profile_developer)
+from src.pipeline import (REPO_DECIDE_SYSTEM, _calibrate_fit,  # noqa: E402
+                          _cap_workload, _rebalance, analyze_project_ui,
+                          chat_reply, match_ui, profile_developer)
 from src.schemas import GitHubData, RepoReadPlan              # noqa: E402
 from src.skills import (canon, canon_list, catalog,           # noqa: E402
                         menu_for_prompt)
@@ -420,6 +420,29 @@ def run_g02():
                       f"max={max_share:.0%}, cảnh báo khi không chia nổi={honest}")
 
 
+def run_g03():
+    """Hiệu chỉnh Fit theo bằng chứng — lỗi thật: LLM chấm 70 cho người có mức 0."""
+    devs = [{"id": "d1", "name": "A", "skills": {"python": 80, "ui-frontend": 75}, "readiness": 7},
+            {"id": "d2", "name": "B", "skills": {}, "readiness": 8}]
+    tasks = [{"id": "t1", "name": "Viết tài liệu", "skills": ["documentation"], "estimateDays": 3},
+             {"id": "t2", "name": "Làm UI", "skills": ["ui-frontend"], "estimateDays": 3},
+             {"id": "t3", "name": "Dựng API", "skills": ["backend-api", "python"], "estimateDays": 4}]
+    assignments = {"t1": "d1", "t2": "d1", "t3": "d1"}
+    fit_matrix = {                      # điểm LLM thổi phồng như quan sát được ngày 31/07
+        "t1": {"d1": {"score": 70, "reason": "r", "skillsToLearn": []}},
+        "t2": {"d1": {"score": 90, "reason": "r", "skillsToLearn": []}},
+        "t3": {"d1": {"score": 85, "reason": "r", "skillsToLearn": []}},
+    }
+    notes, at_risk = _calibrate_fit(devs, tasks, assignments, fit_matrix)
+    s = {tid: fit_matrix[tid]["d1"]["score"] for tid in ("t1", "t2", "t3")}
+    ok = (s["t1"] <= 45 and "t1" in at_risk        # không có trục nào -> phải tụt dưới 50
+          and s["t2"] == 90                        # đủ mạnh mọi trục -> giữ nguyên
+          and s["t3"] <= 75                        # mạnh một nửa -> trần 75
+          and len(notes) >= 1
+          and fit_matrix["t1"]["d1"].get("aiScore") == 70)
+    record("G03", ok, f"điểm sau hiệu chỉnh={s}, rủi ro={at_risk}, ghi chú={len(notes)}")
+
+
 def run_n01():
     """Lỗi thật: 'NextJS' và 'Next.js' bị coi là hai kỹ năng khác nhau -> báo thiếu oan."""
     variants = {
@@ -450,7 +473,7 @@ RUNNERS = [run_p01, run_p02, run_p03, run_p04, run_p05, run_p06,
            run_d01, run_d02, run_d03, run_d04, run_d05, run_d06,
            run_m01, run_m02, run_m03, run_m04, run_m05, run_m06,
            run_c01, run_c02, run_c03, run_c04,
-           run_a01, run_g01, run_g02, run_n01, run_n02]
+           run_a01, run_g01, run_g02, run_g03, run_n01, run_n02]
 
 
 def write_report():

@@ -9,7 +9,7 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 
 ## 2. Tổng số câu trong bộ thử nghiệm
 
-**27** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
+**28** (file `eval/golden_set.json`, chạy bằng `scripts/run_eval.py` qua đúng prompt production).
 
 ## 3. Bốn kiểu tình huống khó của sản phẩm
 
@@ -26,12 +26,12 @@ AI quyết định **thành viên nào trong nhóm phù hợp nhất với từn
 - ✅ Thông tin KHÔNG có trong tài liệu: **8 câu** (P03, P04, P05, D01, D02, D03, C02, N02)
 - ✅ Câu mơ hồ, thiếu ngữ cảnh: **4 câu** (P02, P06, D04, D05)
 - ✅ Đòi thứ không được phép: **2 câu** (C01, C04)
-- ✅ Sai gây hậu quả thật: **10 câu** (D06, M02, M03, M04, M05, M06, C03, G01, G02, N01)
+- ✅ Sai gây hậu quả thật: **11 câu** (D06, M02, M03, M04, M05, M06, C03, G01, G02, G03, N01)
 - (còn 3 câu happy path: P01, M01, A01)
 
 ## 4. Số câu bắt nguồn từ quan sát thực tế
 
-**14 câu** (P03, P04, D03, D04, D06, M03, M04, M05, M06, A01, G01, G02, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
+**15 câu** (P03, P04, D03, D04, D06, M03, M04, M05, M06, A01, G01, G02, G03, C01, N01) — nguồn: log các lần chạy thật với Team B2 ngày 29–30/07/2026 và phản hồi Lab Coach ngày 31/07/2026:
 - Lab Coach điền kỹ năng "NextJS", hệ thống ghi "Next.js" → bảng kỹ năng báo thiếu oan (lỗi thật, đã sửa bằng danh mục chuẩn + tag picker) → case N01, M06.
 - Repo của HuyhoangUK1234 toàn fork → hồ sơ rỗng (bug thật, đã sửa) → case D03.
 - Gõ sai GitHub username → 404, chỉ còn tự khai → case D04.
@@ -49,13 +49,16 @@ Lịch sử đầy đủ: `eval/run-history.md`; bảng chi tiết từng câu c
 | 1 — bộ 24 câu ban đầu | 30/07/2026 | 21/24 (87.5%) | 0 | ĐẠT |
 | 2 — ngay sau khi ép kỹ năng về danh mục chuẩn | 31/07/2026 | 20/26 (76.9%) | **2** | **CHƯA ĐẠT** |
 | 3 — sau khi siết prompt + thêm guardrail giữ kỹ năng tự khai | 31/07/2026 | 23/26 (88.5%) | 0 | ĐẠT |
-| 4 — thêm guardrail trần 50% khối lượng (case G02) | 31/07/2026 | **25/27 (92.6%)** | 0 | ĐẠT |
+| 4 — thêm guardrail trần 50% khối lượng (case G02) | 31/07/2026 | 25/27 (92.6%) | 0 | ĐẠT |
+| 5 — thêm hiệu chỉnh Fit theo bằng chứng (case G03) | 31/07/2026 | **26/28 (92.9%)** | 0 | ĐẠT |
 
 **Lượt 2 là lượt đáng giá nhất để kể khi demo:** việc thống nhất tên kỹ năng về 24 trục của khoá đã sửa được lỗi "NextJS ≠ Next.js", nhưng lại đẻ ra lỗi mới — trục quá thô khiến model suy diễn bắc cầu ("có repo Python" → gán thêm `backend-api`, `data-handling`; repo toàn JavaScript vẫn gán `python`) và làm rơi kỹ năng ngoài danh mục (khai Java thì Java biến mất khỏi hồ sơ). Đó là 2 lần bịa, tức vi phạm đúng điều nhóm cam kết không cho phép sai, nên lượt đó **trượt chuẩn** dù vẫn 76.9%.
 
 Cách sửa (không hạ chuẩn): thêm quy tắc cấm suy diễn bắc cầu vào prompt Luồng 1, và thêm guardrail bằng code — kỹ năng người dùng tự khai luôn được giữ trong hồ sơ với mức 45 và ghi rõ "self-reported". Lượt 3 hết bịa.
 
-2 câu còn fail ở lượt 4 (số thật):
+**Lượt 5 sinh ra từ một quan sát thật nữa của Lab Coach:** "phân công tự động toàn hiện 70+ kể cả khi không ai fit". Soi 6 nhóm đã lưu thì đúng — có việc mà người nhận có mức 0 trên *mọi* kỹ năng việc đó cần vẫn được chấm 70, và `unassigned` chưa từng được dùng lần nào vì LLM gần như không chấm dưới 50. Thêm tầng `_calibrate_fit()` hạ điểm về mức bằng chứng cho phép (không có trục nào → trần 45 và đánh dấu "phải học từ đầu"), giữ lại điểm gốc của AI để đối chiếu. Case G03 đo đúng tầng này.
+
+2 câu còn fail (số thật):
 - **P01**: README web đầy đủ nhưng model vẫn trả `confidence=low` — quá thận trọng chứ không bịa.
 - **M03**: ở tầng LLM, người giỏi nhất vẫn bị dồn 54% khối lượng (ngưỡng cam kết 50%). Tầng sản phẩm đã chặn: guardrail `_cap_workload` chuyển việc tới khi không ai vượt 50%, chia không nổi thì ghi cảnh báo nói rõ lý do — case **G02 PASS** đo đúng guardrail này (dồn 100% cho 1 người → cao nhất còn 46%).
 

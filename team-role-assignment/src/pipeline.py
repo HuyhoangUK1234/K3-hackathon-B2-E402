@@ -226,6 +226,65 @@ def _cap_workload(devs: list[dict], tasks: list[dict], assignments: dict,
     return notes
 
 
+FIT_OK_LEVEL = 40       # dưới mức này coi như chưa làm được việc thật trên trục đó
+
+
+def _calibrate_fit(devs: list[dict], tasks: list[dict], assignments: dict,
+                   fit_matrix: dict) -> tuple[list[str], list[str]]:
+    """Hạ Fit Score xuống mức bằng chứng cho phép.
+
+    Đo trên dữ liệu thật: LLM gần như không bao giờ chấm dưới 50 và hay cho 70-90
+    cho những cặp mà người nhận có mức 0 trên MỌI kỹ năng việc đó cần (vd giao việc
+    viết tài liệu cho người không có trục documentation vẫn 70). Điểm cao trông rất
+    đáng tin nên không ai tự phát hiện — phải chặn bằng luật rõ ràng:
+
+        không có trục nào    -> trần 45   (phải học từ đầu)
+        có nhưng đều < 40    -> trần 60
+        đủ mạnh một phần     -> trần 75
+        đủ mạnh mọi trục     -> trần 95
+
+    Trả về (ghi chú, danh sách task rủi ro). Không gỡ việc khỏi người nhận: bài lab
+    vẫn phải có người làm — nhưng phải nói thẳng đây là việc phải học từ đầu.
+    """
+    notes: list[str] = []
+    at_risk: list[str] = []
+    dev_by = {d["id"]: d for d in devs}
+    for t in tasks:
+        did = assignments.get(t["id"])
+        dev = dev_by.get(did) if did else None
+        entry = (fit_matrix.get(t["id"]) or {}).get(did) if dev else None
+        if not entry or not isinstance(entry.get("score"), int):
+            continue
+        req = list(t.get("skills") or [])
+        levels = {s: (dev.get("skills") or {}).get(s, 0) for s in req}
+        vals = list(levels.values()) or [0]
+        best = max(vals)
+        covered = sum(1 for v in vals if v >= FIT_OK_LEVEL)
+        if best == 0:
+            ceiling = 45
+        elif best < FIT_OK_LEVEL:
+            ceiling = 60
+        elif req and covered == len(req):
+            ceiling = 95
+        else:
+            ceiling = 75
+        entry["evidenceLevels"] = levels          # UI/coach đối chiếu được ngay
+        old = entry["score"]
+        if old > ceiling:
+            entry["score"] = ceiling
+            entry["aiScore"] = old
+            entry["reason"] = (entry.get("reason", "")
+                               + f" [Hệ thống hạ Fit {old}→{ceiling}: mức thật của {dev['name']} "
+                                 f"trên kỹ năng việc này cần là "
+                               + ", ".join(f"{label(s)} {v}" for s, v in levels.items()) + ".]")
+        if entry["score"] < 50:
+            at_risk.append(t["id"])
+            missing = [label(s) for s, v in levels.items() if v < FIT_OK_LEVEL]
+            notes.append(f"'{t['name']}' giao cho {dev['name']} nhưng chưa có bằng chứng năng lực "
+                         f"({', '.join(missing) or 'không trục nào'}) — cần học từ đầu hoặc nhờ Lab Coach.")
+    return notes, at_risk
+
+
 def profile_developer(gh: GitHubData, self_reported: dict) -> UIDevProfile:
     """Flow 1 LLM step — same prompt the app uses; also called by eval."""
     payload = {"github_data": gh.model_dump(), "self_reported": self_reported}
@@ -518,6 +577,8 @@ def analyze_match(draft: dict, volunteers: dict | None = None) -> dict:
     # the most loaded dev.
     rebalance_notes = _rebalance(devs, tasks, assignments, fit_matrix)
     cap_notes = _cap_workload(devs, tasks, assignments, fit_matrix)
+    # Hiệu chỉnh SAU CÙNG: guardrail phía trên có thể đổi người nhận việc.
+    risk_notes, at_risk = _calibrate_fit(devs, tasks, assignments, fit_matrix)
 
     coverage_rows = []
     for c in mr.skill_coverage:
@@ -528,9 +589,10 @@ def analyze_match(draft: dict, volunteers: dict | None = None) -> dict:
     return {
         "devs": devs, "project": draft["project"], "tasks": tasks, "labs": draft["labs"],
         "fitMatrix": fit_matrix, "assignments": assignments,
-        "warnings": mr.warnings + gh_errors + rebalance_notes + cap_notes,
+        "warnings": mr.warnings + gh_errors + rebalance_notes + cap_notes + risk_notes,
         "workloadNotes": mr.workload_notes,
         "unassignedTaskIds": [t for t in mr.unassigned_task_ids if t in valid_task],
+        "atRiskTaskIds": at_risk,
         "skillCoverage": coverage_rows,
         "skillGaps": draft.get("skillGaps", []),
         "volunteers": vol,

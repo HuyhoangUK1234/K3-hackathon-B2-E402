@@ -95,6 +95,7 @@ const S = {
   // Filled from /api/analyze:
   DEVS: [], TASKS: [], LABS: [], PROJECT: null, FIT_MATRIX: {}, DEFAULT_ASSIGNMENTS: {},
   assignments: {}, warnings: [], workloadNotes: '', SKILL_COVERAGE: [], unassignedTaskIds: [],
+  atRiskTaskIds: [],             // việc giao cho người chưa có bằng chứng năng lực
   SKILL_CATALOG: {},             // {skill_id: nhãn tiếng Việt}
   taskStatus: {},                // {taskId: todo|doing|done}
 };
@@ -161,7 +162,8 @@ function computeFit(task, dev){
   const m = aiFit(task, dev);
   const names = devSkills(dev.id).map(s => s.name.toLowerCase());
   const missing = task.skills.filter(s => !names.includes(s.toLowerCase()));
-  if (m) return { score: m.score, reason: m.reason, skillsToLearn: m.skillsToLearn || missing, fromAI: true };
+  if (m) return { score: m.score, reason: m.reason, skillsToLearn: m.skillsToLearn || missing,
+                  fromAI: true, aiScore: m.aiScore, evidenceLevels: m.evidenceLevels };
   const have = task.skills.length - missing.length;
   return { score: null, fromAI: false, skillsToLearn: missing,
     reason: `Cặp này do bạn tự kéo — AI chưa chấm. Đối chiếu tên kỹ năng: khớp ${have}/${task.skills.length}`
@@ -400,6 +402,7 @@ const App = {
     // không được giữ lại của nhóm mở trước đó.
     S.gaps = data.skillGaps || [];
     S.gapPick = data.volunteers || {};
+    S.atRiskTaskIds = data.atRiskTaskIds || [];
     S.taskStatus = data.taskStatus || {};
     S.unassignedTaskIds = data.unassignedTaskIds || [];
     S.groupId = data.groupId || null; S.groupStatus = data.status || 'Analyzed';
@@ -989,8 +992,12 @@ function fitText(score){ return score == null ? '—' : score + '%'; }
    thì hiện "chưa chấm" thay vì mượn điểm của cặp khác — đó là điều Lab Coach cần kiểm được. */
 function fitChip(fit){
   if (!fit) return '';
-  if (fit.fromAI)
-    return `<span title="AI đã chấm đúng cặp này, có lý do trích bằng chứng" style="${fitBadgeStyle(fit.score)}">Fit ${fit.score}%</span>`;
+  if (fit.fromAI) {
+    if (fit.score < 50)
+      return `<span title="Người nhận chưa có bằng chứng năng lực trên kỹ năng việc này cần — phải học từ đầu" style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:9px;">⚠ Fit ${fit.score}% · phải học</span>`;
+    const hint = fit.aiScore ? `AI chấm ${fit.aiScore}%, hệ thống hạ còn ${fit.score}% theo bằng chứng thật` : 'AI đã chấm đúng cặp này, lý do có trích bằng chứng';
+    return `<span title="${esc(hint)}" style="${fitBadgeStyle(fit.score)}">Fit ${fit.score}%${fit.aiScore?' ↓':''}</span>`;
+  }
   return `<span title="Cặp này do người dùng tự kéo — AI chưa chấm nên chưa có Fit Score"
     style="background:#f1f5f9;color:#64748b;border:1px dashed #cbd5e1;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:9px;">chưa chấm</span>`;
 }
@@ -1041,6 +1048,10 @@ function renderAssignmentDigest(){
   const open = S.TASKS.filter(t => !S.assignments[t.id]);
   const openBox = open.length ? `<div style="margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:11px 14px;font-size:12.5px;color:#b91c1c;">
       <strong>${open.length} việc chưa có người:</strong> ${open.map(t=>esc(t.name)).join(' · ')} — sang tab <strong>Bảng việc</strong> để kéo cho ai đó.</div>` : '';
+  const risky = S.atRiskTaskIds.map(id => S.TASKS.find(t => t.id === id)).filter(Boolean);
+  const riskBox = risky.length ? `<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:11px 14px;font-size:12.5px;color:#92400e;">
+      <strong>${risky.length} việc người nhận phải học từ đầu</strong> (không có bằng chứng năng lực trên kỹ năng việc đó cần): ${risky.map(t=>esc(t.name)).join(' · ')}.
+      Nên đổi người, ghép cặp học chung, hoặc gửi ticket nhờ Lab Coach.</div>` : '';
   return `<div class="card2" style="padding:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:15.5px;">Ai làm phần nào</div>
@@ -1048,7 +1059,7 @@ function renderAssignmentDigest(){
     </div>
     <div class="seg-bar" style="margin:12px 0 14px;">${segs || '<div style="width:100%;background:#e2e8f0;color:#64748b;">Chưa có phân công</div>'}</div>
     <div style="display:flex;flex-direction:column;gap:9px;">${rows}</div>
-    ${openBox}
+    ${openBox}${riskBox}
   </div>`;
 }
 
